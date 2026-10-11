@@ -131,3 +131,54 @@ def test_job_accepts_several_one_off_style_images(library, tmp_path, monkeypatch
             break
         time.sleep(0.05)
     assert len(captured["paths"]) == 2
+
+
+def test_a_slot_is_kept_for_faction_wide_materials(library):
+    for i in range(5):
+        add_reference("sovereign_call", "dominion", "weapon", f"rifle{i}.png", _png())
+    add_reference("sovereign_call", "dominion", None, "materials.png", _png())
+    refs = [p.name for p in resolve(None, "dominion", "weapon", None).references]
+    assert len(refs) == styles.MAX_STYLE_REFERENCES and refs[-1] == "materials.png"
+
+
+def test_bundled_sovereign_call_references(monkeypatch):
+    # The repo ships Dominion and Reformation references cut from the style boards.
+    monkeypatch.delenv("MESHIFY_REFERENCE_DIR", raising=False)
+    styles.load_packs.cache_clear()
+    dom = [p.name for p in resolve("sovereign_call", "dominion", "weapon", None).references]
+    assert "materials.png" in dom and len(dom) == styles.MAX_STYLE_REFERENCES
+    ref = resolve("sovereign_call", "reformation", "armor", None).references
+    assert [p.name for p in ref][-1] == "materials.png" and len(ref) == styles.MAX_STYLE_REFERENCES
+    for p in ref + resolve("sovereign_call", "dominion", "hero_weapon", None).references:
+        assert Image.open(p).size[0] >= 60
+
+
+def _maps_on(rel, faction):
+    from meshify.pipeline import materials
+    import numpy as np
+
+    im = Image.open(f"meshify/styles/references/{rel}").convert("RGB")
+    alpha = np.asarray(images.remove_background(im))[..., 3] > 128
+    maps = materials.build_pbr_maps(im, 0.0, resolve("sovereign_call", faction, None, None).material)
+    return np.asarray(im).astype(int), alpha, maps
+
+
+def test_real_dominion_art_bronze_is_metal_oxblood_is_enamel_amber_glows():
+    import numpy as np
+
+    rgb, alpha, maps = _maps_on("dominion/hero_weapon/officer_rifle_target.png", "dominion")
+    metal = np.asarray(maps.metallic) / 255
+    r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+    oxblood = (r > g * 1.5) & (r > b * 1.5) & (r > 50) & (r < 200) & alpha
+    bronze = (r > g * 1.1) & (g > b * 1.15) & (r > 90) & alpha
+    assert metal[bronze].mean() > 0.6
+    assert metal[oxblood].mean() < 0.2
+    assert maps.emissive_mask is not None  # the amber light strips
+
+
+def test_real_reformation_white_armour_is_not_mistaken_for_glow():
+    import numpy as np
+
+    _, alpha, maps = _maps_on("reformation/armor/trooper.png", "reformation")
+    glow = np.asarray(maps.emissive_mask) / 255 > 0.5 if maps.emissive_mask else np.zeros(1)
+    assert glow[alpha].mean() < 0.05

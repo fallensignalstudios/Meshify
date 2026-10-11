@@ -1,5 +1,9 @@
 # Style reference library
 
+Bundled: **Dominion** and **Reformation** references cut from the faction style
+boards (weapons, armor, tech props, vehicles, environments, material swatches),
+with captions removed. Ancient, Aurelion and Eclipse folders are waiting for art.
+
 Drop faction concept art into folders here and Meshify uses it automatically
 for **text prompts** with that faction:
 

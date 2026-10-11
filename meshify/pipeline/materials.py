@@ -128,25 +128,35 @@ def _distance_to(lab: np.ndarray, colors: list[tuple[int, int, int]]) -> np.ndar
     return best
 
 
-def metallic_from_palette(albedo: np.ndarray, metals: list[tuple[int, int, int]]) -> np.ndarray:
-    """Pixels close to the faction's metal swatches become metallic (soft edge)."""
+def metallic_from_palette(albedo: np.ndarray, metals: list[tuple[int, int, int]],
+                          nonmetals: list[tuple[int, int, int]] | None = None) -> np.ndarray:
+    """Pixels close to the faction's metal swatches become metallic (soft edge).
+
+    Dark colours all sit close together in Lab, so oxblood enamel is "near"
+    blackened steel. With `nonmetals` (enamel, leather, paint), each pixel goes
+    to whichever swatch family it is actually closer to.
+    """
     if not metals:
         return np.zeros(albedo.shape[:2], dtype=np.float32)
-    dist = _distance_to(srgb_to_lab(albedo), metals)
+    lab = srgb_to_lab(albedo)
+    dist = _distance_to(lab, metals)
     metal = np.clip(1.0 - (dist - 12.0) / 18.0, 0, 1)  # full under dE 12, none past 30
+    if nonmetals:
+        margin = _distance_to(lab, nonmetals) - dist  # > 0: closer to a metal swatch
+        metal *= np.clip(0.5 + margin / 8.0, 0, 1)
     return ndimage.gaussian_filter(metal, 1.0).astype(np.float32)
 
 
-def emissive_from_palette(rgb: np.ndarray, color: tuple[int, int, int] | None,
+def emissive_from_palette(rgb: np.ndarray, colors: list[tuple[int, int, int]],
                           max_coverage: float = 0.2) -> np.ndarray | None:
-    """Find glowing channels: near the faction's energy colour AND brighter than
+    """Find glowing channels: near one of the faction's energy colours AND brighter than
     their surroundings. The local-contrast test stops flat ivory or white panels
     from being mistaken for white-gold glow."""
-    if color is None:
+    if not colors:
         return None
     luma = rgb @ LUMA
     lifted = luma - ndimage.gaussian_filter(luma, 8)
-    near = np.clip(1.0 - (_distance_to(srgb_to_lab(rgb), [color]) - 15.0) / 20.0, 0, 1)
+    near = np.clip(1.0 - (_distance_to(srgb_to_lab(rgb), colors) - 15.0) / 20.0, 0, 1)
     mask = near * np.clip((lifted - 0.06) / 0.12, 0, 1) * (luma > 0.45)
     mask = ndimage.gaussian_filter(mask.astype(np.float32), 0.8)
     coverage = float((mask > 0.5).mean())
@@ -171,7 +181,7 @@ def build_pbr_maps(base_color: Image.Image, delight_strength: float,
     metal = np.zeros_like(rough)  # dielectric unless the style says which colours are metal
     emissive_mask = None
     if style is not None:
-        metal = metallic_from_palette(albedo, style.metals)
+        metal = metallic_from_palette(albedo, style.metals, style.nonmetals)
         # Machined metal reads smoother than paint or stone.
         rough = rough - 0.15 * metal + style.roughness_bias
         ao = 1.0 - (1.0 - ao) * style.ao_strength

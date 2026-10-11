@@ -27,7 +27,8 @@ class MaterialStyle:
     """What the PBR pass needs to know about a faction + condition."""
 
     metals: list[tuple[int, int, int]] = field(default_factory=list)
-    emissive: tuple[int, int, int] | None = None
+    nonmetals: list[tuple[int, int, int]] = field(default_factory=list)  # paint, enamel, leather
+    emissive: list[tuple[int, int, int]] = field(default_factory=list)
     roughness_bias: float = 0.0
     ao_strength: float = 1.0
 
@@ -102,13 +103,22 @@ def _images_in(folder: Path) -> list[Path]:
     return sorted(p for p in folder.iterdir() if p.suffix.lower() in IMAGE_EXTS and p.is_file())
 
 
-def library_references(data: dict, faction: str | None, category: str | None) -> list[Path]:
-    """Images dropped into the library folders, most specific first."""
+def library_references(data: dict, faction: str | None, category: str | None,
+                       limit: int | None = None) -> list[Path]:
+    """Images dropped into the library folders, most specific first.
+
+    With a `limit`, one slot is kept for faction-wide images when there are
+    any: those usually carry the faction's materials (bronze, oxblood...),
+    which a full set of asset-type images would otherwise crowd out.
+    """
     if not faction:
         return []
     root = reference_root(data) / faction
     specific = _images_in(root / category) if category else []
-    return specific + _images_in(root)
+    general = _images_in(root)
+    if limit is not None and specific and general:
+        specific = specific[:max(1, limit - 1)]
+    return specific + general
 
 
 def _dedupe(paths: list[Path]) -> list[Path]:
@@ -205,7 +215,9 @@ def resolve(pack: str | None, faction: str | None, category: str | None,
 
     material = MaterialStyle(
         metals=[_hex(c) for c in fac.get("metals", [])],
-        emissive=_hex(fac["emissive"]) if fac.get("emissive") else None,
+        nonmetals=[_hex(c) for c in fac.get("nonmetals", [])],
+        emissive=[_hex(c) for c in ([fac["emissive"]] if isinstance(fac.get("emissive"), str)
+                                    else fac.get("emissive", []))],
         roughness_bias=fac.get("roughness_bias", 0.0) + cond.get("roughness_offset", 0.0),
         ao_strength=cond.get("ao_strength", 1.0),
     )
@@ -228,7 +240,7 @@ def resolve(pack: str | None, faction: str | None, category: str | None,
         framing=cat.get("prompt"),
         references=_dedupe([
             *_pack_references(data, override.get("reference")),
-            *library_references(data, faction, category),
+            *library_references(data, faction, category, MAX_STYLE_REFERENCES),
             *_pack_references(data, fac.get("reference")),
         ])[:MAX_STYLE_REFERENCES],
         aspect=cat.get("aspect", "square"),

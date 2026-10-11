@@ -42,7 +42,9 @@ gives a partial 3D model. Three things guard against that:
 ## How the faction materials work
 
 - **Metallic.** Texture pixels close in colour to one of the faction's `metals`
-  swatches become metallic. Dominion bronze and blackened steel turn into real
+  swatches become metallic. If a faction lists `nonmetals` (enamel, leather,
+  paint), each pixel goes to whichever family it's *closer* to. Without that,
+  dark oxblood enamel reads as "near" blackened steel. Dominion bronze and blackened steel turn into real
   metal in Unreal, while red cloth or black stone stays non-metal. Eclipse has
   no metals: corruption is organic.
 - **Emissive.** Pixels near the faction's `emissive` colour that are also
@@ -55,6 +57,10 @@ gives a partial 3D model. Three things guard against that:
 - **Condition** shifts roughness (pristine is glossier, derelict rougher) and
   scales ambient occlusion (more grime in the crevices).
 
+The Sovereign Call colours are sampled from the faction style boards and
+reference art, and tests check them on real art (Dominion bronze = metal,
+oxblood = enamel, amber strips glow; Reformation white armour doesn't glow).
+
 These are colour heuristics, so they work best when the generated texture
 actually uses the faction palette. A faction prompt helps a lot with that.
 
@@ -66,7 +72,8 @@ label = "My Faction"
 prompt = "short design-language words, most important first"
 negative = "things this faction never looks like"
 metals = ["#8c6239", "#2b2b2e"]   # colours that should read as metal
-emissive = "#ffaa33"               # energy/glow colour
+nonmetals = ["#4c281d"]            # look-alikes that must NOT (enamel, leather, paint)
+emissive = ["#ffaa33", "#ffe08a"]  # glow colours: include the white-hot core
 roughness_bias = -0.05             # negative = glossier overall
 ```
 

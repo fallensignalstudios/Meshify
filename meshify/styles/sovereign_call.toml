@@ -22,8 +22,10 @@ negative = "text, letters, writing, logo, gibberish symbols, cartoon, toy"
 label = "Dominion"
 prompt = "Dominion imperial sci-fi, Roman-Byzantine design, burnished bronze, blackened steel, oxblood red accents, engraved insignia, recessed amber energy channels"
 negative = "blue glow, white plastic"
-metals = ["#8c6239", "#b08d57", "#2b2b2e", "#4a4a52", "#c0c0c8"]  # bronze x2, blackened steel, dark chrome, ceremonial silver
-emissive = "#ffaa33"  # warm amber
+# Sampled from the Dominion style board and reference art.
+metals = ["#8c6239", "#b08d57", "#806752", "#7c5d44", "#2b2b2e", "#4a4a52", "#595958", "#c0c0c8"]  # bronze x4, blackened steel, dark chrome x2, ceremonial silver
+nonmetals = ["#3e201a", "#4c281d", "#36110f", "#6b1c1c", "#1e1c1c"]  # oxblood enamel x4, imperial leather
+emissive = ["#ffaa33", "#ffe08a"]  # warm amber, white-hot amber core
 roughness_bias = -0.05
 # Style references: drop images into references/dominion/ (all Dominion assets)
 # or references/dominion/<asset type>/ - they're picked up automatically.
@@ -43,8 +45,9 @@ negative = "neon, cyberpunk, fantasy filigree, gold plated"
 label = "Reformation"
 prompt = "Reformation sci-fi, clinical precision engineering, graphite and gunmetal, muted navy, sterile white panels, compact modular, pale cyan sensor lights"
 negative = "gold, bronze, ornate, engraving, rust"
-metals = ["#3a3d42", "#5a5f66", "#2c3440"]  # graphite, gunmetal, navy metal
-emissive = "#9fe6ff"  # icy cyan
+metals = ["#3a3d42", "#5a5f66", "#2c3440", "#2e3135", "#494c51", "#2f3d4d"]  # graphite, gunmetal, navy (flat + board-sampled)
+nonmetals = ["#c1c7cf", "#e6eaee"]  # sterile white painted panels
+emissive = ["#9fe6ff", "#4a8ec2"]  # icy cyan, board cyan-blue (no white-hot core: it would match sterile white armour)
 roughness_bias = -0.1
 
 [factions.reformation.overrides.weapon]
@@ -56,6 +59,7 @@ label = "Ancient Sovereign"
 prompt = "ancient Sovereign technology, elegant sacred geometry, ivory white, pale gold inlays, brushed platinum, sweeping ribs, restrained white-gold energy"
 negative = "rust, grime, red, purple, cheap"
 metals = ["#d4b97a", "#e5e4e2", "#a8a9ad"]  # pale gold, platinum, ancient silver
+nonmetals = ["#f2ead8", "#1a1a1c"]  # ivory plating, black stone
 emissive = "#fff1c9"  # white-gold
 roughness_bias = -0.1
 
@@ -76,7 +80,7 @@ label = "Eclipse"
 prompt = "Eclipse corruption, black organic growth consuming technology, carbonized flesh, fractured obsidian, writhing tendrils, violet glow from cracks"
 negative = "clean, bright, gold, ivory, cute"
 metals = []  # corruption is organic, not metal
-emissive = "#9b4dff"  # bruised violet
+emissive = ["#9b4dff", "#dcc2ff"]  # bruised violet, hot core
 roughness_bias = 0.05
 
 [factions.eclipse.overrides.weapon]
