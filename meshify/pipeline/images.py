@@ -197,12 +197,13 @@ def _load_pipeline(model: str, with_ip_adapter: bool):
 
 def text_to_image(prompt: str, seed: int, realism: bool,
                   style: "ResolvedStyle | None" = None,
-                  style_image: Image.Image | None = None,
+                  style_images: list[Image.Image] | None = None,
                   style_strength: float = 0.6) -> Image.Image:
     """Generate a reference image. Needs `pip install meshify[text]` and a GPU.
 
-    `style_image` (SDXL only) lends its colours and materials via IP-Adapter;
-    `style_strength` 0..1 sets how strongly.
+    `style_images` (SDXL only) lend their colours and materials via IP-Adapter;
+    several images are blended, so the faction's shared look wins over any one
+    image's quirks. `style_strength` 0..1 sets how strongly.
     """
     global _t2i_pipe, _t2i_key
     if importlib.util.find_spec("diffusers") is None:
@@ -213,7 +214,7 @@ def text_to_image(prompt: str, seed: int, realism: bool,
     import torch
 
     model = t2i_model()
-    use_ip = style_image is not None
+    use_ip = bool(style_images)
     if use_ip and "xl" not in model.lower():
         log.warning("Style reference images need an SDXL model (current: %s); ignoring it.", model)
         use_ip = False
@@ -230,7 +231,8 @@ def text_to_image(prompt: str, seed: int, realism: bool,
         # attention block, so it lends colours/materials, not its exact shape.
         scale = {"up": {"block_0": [0.0, style_strength, 0.0]}}
         _t2i_pipe.set_ip_adapter_scale(scale)
-        kwargs["ip_adapter_image"] = style_image.convert("RGB")
+        # One IP-Adapter, several images: [[img, img, ...]].
+        kwargs["ip_adapter_image"] = [[img.convert("RGB") for img in style_images]]
     return _t2i_pipe(**kwargs).images[0]
 
 

@@ -37,6 +37,17 @@
            cursor: pointer; }
   button:disabled { opacity: .5; cursor: default; }
   .hint { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .refs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .ref { position: relative; width: 64px; height: 64px; border: 1px solid var(--line);
+         border-radius: 6px; overflow: hidden; background: var(--bg); }
+  .ref img { width: 100%; height: 100%; object-fit: cover; }
+  .ref .tag { position: absolute; left: 0; bottom: 0; right: 0; font-size: 9px; text-align: center;
+              background: rgba(0,0,0,.65); color: var(--muted); }
+  .ref button { position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; margin: 0;
+                padding: 0; font-size: 12px; line-height: 18px; border-radius: 9px;
+                background: rgba(0,0,0,.7); color: var(--text); }
+  button.small { margin-top: 8px; padding: 6px; font-size: 12px; font-weight: 500;
+                 background: var(--bg); color: var(--accent); border: 1px solid var(--line); }
   .section { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line);
              font-weight: 600; color: var(--accent); }
   .warnbox { margin-top: 10px; padding: 8px 10px; border: 1px solid var(--error);
@@ -96,12 +107,22 @@
         </div>
         <label for="category">Asset type</label><select id="category" name="category"></select>
         <div class="hint" id="presethint"></div>
-        <label for="style_image">Style reference (optional)</label>
-        <input id="style_image" name="style_image" type="file" accept="image/*">
+        <div id="refbox" hidden>
+          <label>Style references <span id="refscope"></span></label>
+          <div class="refs" id="refs"></div>
+          <div class="hint" id="refhint"></div>
+          <div class="row">
+            <button type="button" class="small" id="addtype">+ Add for this type</button>
+            <button type="button" class="small" id="addfaction">+ Add for whole faction</button>
+          </div>
+          <input type="file" id="refupload" accept="image/*" multiple hidden>
+        </div>
         <label for="style_strength">Style strength: <b id="ssv">0.6</b></label>
         <input id="style_strength" name="style_strength" type="range" min="0" max="1" step="0.05" value="0.6">
-        <div class="hint">Concept art whose colours and materials text prompts should follow
-          (e.g. bronze trim, oxblood, amber). Not used when you upload a reference image above.</div>
+        <label for="style_images">One-off style references (optional)</label>
+        <input id="style_images" name="style_images" type="file" accept="image/*" multiple>
+        <div class="hint">Replace the library for this job only. Style references guide colours
+          and materials of <i>text prompts</i>; an uploaded reference image above defines its own look.</div>
       </div>
 
       <label class="check"><input type="checkbox" id="realism" checked> Realism pass (photoreal + PBR)</label>
@@ -181,9 +202,55 @@ fetch("/api/styles").then(r => r.json()).then(packs => {
   }
   $("category").append(option("", "— generic —"));
   for (const [k, c] of Object.entries(pack.categories)) $("category").append(option(k, c.label));
-  $("category").onchange = presetHint;
+  $("category").onchange = () => { presetHint(); loadRefs(); };
+  $("faction").onchange = loadRefs;
   presetHint();
+  loadRefs();
 });
+
+let uploadScope = "type";
+async function loadRefs() {
+  const faction = $("faction").value, category = $("category").value;
+  $("refbox").hidden = !faction;
+  if (!faction) return;
+  const q = new URLSearchParams({ pack: $("style_pack").value, faction, category });
+  const refs = await (await fetch("/api/references?" + q)).json();
+  const fLabel = $("faction").selectedOptions[0].textContent;
+  const cLabel = category ? $("category").selectedOptions[0].textContent : "";
+  $("refscope").textContent = `· ${fLabel}${cLabel ? " · " + cLabel : ""}`;
+  $("addtype").hidden = !category;
+  $("addtype").textContent = `+ Add for ${fLabel} ${cLabel}`;
+  $("addfaction").textContent = `+ Add for all ${fLabel}`;
+  $("refhint").textContent = refs.length
+    ? "Used automatically for text prompts with this faction (most specific first)."
+    : "No references yet. Add 2–4 images of this faction's look (plain background, no lettering).";
+  $("refs").innerHTML = refs.map(r => `<div class="ref" title="${esc(r.name)}">
+      <img src="${r.url}" alt="">
+      <span class="tag">${r.scope === "type" ? "type" : r.scope === "faction" ? "faction" : "pack"}</span>
+      ${r.scope === "pack" ? "" : `<button type="button" data-name="${esc(r.name)}"
+        data-scope="${r.scope}" title="Remove">×</button>`}
+    </div>`).join("");
+  for (const b of $("refs").querySelectorAll("button")) b.onclick = async () => {
+    if (!confirm(`Remove ${b.dataset.name} from the library?`)) return;
+    const q = new URLSearchParams({ pack: $("style_pack").value, faction, name: b.dataset.name,
+                                    category: b.dataset.scope === "type" ? category : "" });
+    await fetch("/api/references?" + q, { method: "DELETE" });
+    loadRefs();
+  };
+}
+$("addtype").onclick = () => { uploadScope = "type"; $("refupload").click(); };
+$("addfaction").onclick = () => { uploadScope = "faction"; $("refupload").click(); };
+$("refupload").onchange = async () => {
+  const fd = new FormData();
+  fd.set("pack", $("style_pack").value);
+  fd.set("faction", $("faction").value);
+  fd.set("category", uploadScope === "type" ? $("category").value : "");
+  for (const f of $("refupload").files) fd.append("files", f);
+  const r = await fetch("/api/references", { method: "POST", body: fd });
+  if (!r.ok) alert((await r.json()).detail || "Upload failed");
+  $("refupload").value = "";
+  loadRefs();
+};
 function presetHint() {
   const c = styleCats[$("category").value];
   const longest = c && c.size_axis === "longest";
@@ -200,7 +267,7 @@ $("form").onsubmit = async (e) => {
   fd.set("realism", $("realism").checked);
   if (!fd.get("real_world_size_m")) fd.set("real_world_size_m", "0");
   if (!$("image").files.length) fd.delete("image");
-  if (!$("style_image").files.length) fd.delete("style_image");
+  if (!$("style_images").files.length) fd.delete("style_images");
   $("go").disabled = true;
   try {
     const r = await fetch("/api/jobs", { method: "POST", body: fd });

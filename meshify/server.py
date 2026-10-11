@@ -13,6 +13,7 @@ import tempfile
 import threading
 import traceback
 import uuid
+from urllib.parse import quote
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -23,7 +24,7 @@ from .backends import list_backends
 from .gpu import blackwell_torch_problem, gpu_info, low_vram
 from .config import DEFAULT_BACKEND, OUTPUT_ROOT, GenerationRequest
 from .pipeline.run import generate
-from .styles import list_packs
+from .styles import add_reference, delete_reference, list_library, list_packs, load_packs
 
 log = logging.getLogger(__name__)
 WEB_DIR = Path(__file__).parent / "web"
@@ -78,6 +79,61 @@ def styles() -> list[dict]:
     return list_packs()
 
 
+@app.get("/api/references")
+def references(pack: str, faction: str, category: str = "") -> list[dict]:
+    """Style references a job with this faction + asset type would use."""
+    try:
+        refs = list_library(pack, faction, category or None)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    for ref in refs:
+        ref["url"] = f"/api/references/file?path={quote(ref.pop('path'))}"
+    return refs
+
+
+@app.get("/api/references/file")
+def reference_file(path: str) -> FileResponse:
+    target = Path(path).resolve()
+    # Only serve images that some faction/type actually uses as a reference.
+    allowed = {Path(r["path"]).resolve() for r in _all_references()}
+    if target not in allowed:
+        raise HTTPException(404, "Not a style reference")
+    return FileResponse(target)
+
+
+def _all_references() -> list[dict]:
+    out = []
+    for pack in list_packs():
+        for faction in pack["factions"]:
+            for category in [None, *pack["categories"]]:
+                out += list_library(pack["id"], faction, category)
+    return out
+
+
+@app.post("/api/references")
+async def upload_references(pack: str = Form(...), faction: str = Form(...),
+                            category: str = Form(""),
+                            files: list[UploadFile] = File(...)) -> list[dict]:
+    try:
+        for upload in files:
+            add_reference(pack, faction, category or None, upload.filename or "reference.png",
+                          await upload.read())
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    load_packs.cache_clear()
+    return references(pack, faction, category)
+
+
+@app.delete("/api/references")
+def remove_reference(pack: str, faction: str, name: str, category: str = "") -> list[dict]:
+    try:
+        delete_reference(pack, faction, category or None, name)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+    load_packs.cache_clear()
+    return references(pack, faction, category)
+
+
 @app.post("/api/jobs")
 async def create_job(
     prompt: str = Form(""),
@@ -94,18 +150,21 @@ async def create_job(
     faction: str = Form(""),
     category: str = Form(""),
     condition: str = Form(""),
-    style_image: UploadFile | None = File(None),
+    style_images: list[UploadFile] = File(default_factory=list),
     style_strength: float = Form(0.6),
     asset_name: str = Form("asset"),
 ) -> dict:
-    image_path = style_path = None
+    image_path = None
     tmp = Path(tempfile.mkdtemp(prefix="meshify-upload-"))
     if image is not None and image.filename:
         image_path = tmp / ("input" + Path(image.filename).suffix.lower())
         image_path.write_bytes(await image.read())
-    if style_image is not None and style_image.filename:
-        style_path = tmp / ("style" + Path(style_image.filename).suffix.lower())
-        style_path.write_bytes(await style_image.read())
+    style_paths = []
+    for i, upload in enumerate(style_images or []):
+        if upload.filename:
+            path = tmp / f"style_{i}{Path(upload.filename).suffix.lower()}"
+            path.write_bytes(await upload.read())
+            style_paths.append(str(path))
 
     try:
         req = GenerationRequest(
@@ -124,7 +183,7 @@ async def create_job(
             faction=faction or None,
             category=category or None,
             condition=condition or None,
-            style_image_path=str(style_path) if style_path else None,
+            style_image_paths=style_paths,
             style_strength=style_strength,
             asset_name=asset_name,
         )

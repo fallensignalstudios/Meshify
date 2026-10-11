@@ -35,7 +35,7 @@ class GenerationRequest:
     faction: str | None = None
     category: str | None = None
     condition: str | None = None
-    style_image_path: str | None = None  # overrides the pack's faction reference
+    style_image_paths: list[str] = field(default_factory=list)  # replace the library refs
     style_strength: float = 0.6  # how strongly the reference's look is applied
 
     # Realism pipeline

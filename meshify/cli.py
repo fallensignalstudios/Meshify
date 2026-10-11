@@ -26,7 +26,7 @@ def _cmd_generate(args: argparse.Namespace) -> int:
         faction=args.faction,
         category=args.type,
         condition=args.condition,
-        style_image_path=args.style_image,
+        style_image_paths=args.style_image or [],
         style_strength=args.style_strength,
         asset_name=args.name,
     )
@@ -77,6 +77,9 @@ def _cmd_styles(_: argparse.Namespace) -> int:
         print("  types:      " + ", ".join(
             f"{k} [{v['tris']} tris, {v['texture']}px]" for k, v in pack["categories"].items()))
         print("  conditions: " + ", ".join(pack["conditions"]))
+        refs = pack.get("references", {})
+        if refs:
+            print("  references: " + ", ".join(f"{k} ({n})" for k, n in refs.items()))
     return 0
 
 
@@ -106,8 +109,9 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--faction", "-f", help="e.g. dominion, reformation, ancient, aurelion, eclipse")
     g.add_argument("--type", "-t", help="Asset type, e.g. weapon, modular_architecture, armor")
     g.add_argument("--condition", "-c", help="e.g. pristine, maintained, frontier, derelict")
-    g.add_argument("--style-image", help="Style reference image: its colours/materials guide "
-                   "the text-to-image step (SDXL). Default: the faction's pack reference")
+    g.add_argument("--style-image", action="append", help="Style reference image (repeatable): "
+                   "its colours/materials guide the text-to-image step (SDXL). "
+                   "Default: the faction's reference library")
     g.add_argument("--style-strength", type=float, default=0.6, help="0..1, default 0.6")
     g.set_defaults(func=_cmd_generate)
 

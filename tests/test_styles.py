@@ -234,8 +234,9 @@ def test_pack_reference_image_resolves_relative_to_pack(tmp_path, monkeypatch):
     monkeypatch.setenv("MESHIFY_STYLE_DIR", str(tmp_path))
     styles.load_packs.cache_clear()
     try:
-        assert resolve("t", "dom", "prop", None).reference == tmp_path / "references" / "dom.png"
-        assert resolve("t", "dom", "weapon", None).reference is None  # missing file: skipped
+        assert resolve("t", "dom", "prop", None).references == [tmp_path / "references" / "dom.png"]
+        # The weapon override points at a missing file: skipped, faction ref still used.
+        assert resolve("t", "dom", "weapon", None).references == [tmp_path / "references" / "dom.png"]
     finally:
         styles.load_packs.cache_clear()
 
@@ -245,15 +246,15 @@ def test_style_reference_is_passed_to_text_to_image(tmp_path, monkeypatch):
     ref = tmp_path / "concept.png"
     Image.new("RGB", (64, 64), (140, 98, 57)).save(ref)
 
-    def fake_t2i(prompt, seed, realism, style=None, style_image=None, style_strength=0.6):
-        seen["image"], seen["strength"] = style_image, style_strength
+    def fake_t2i(prompt, seed, realism, style=None, style_images=None, style_strength=0.6):
+        seen["images"], seen["strength"] = style_images, style_strength
         img = Image.new("RGB", (400, 300), (128, 128, 128))
         ImageDraw.Draw(img).rectangle([80, 80, 320, 220], fill=(140, 98, 57))
         return img
 
     monkeypatch.setattr(images, "text_to_image", fake_t2i)
     req = GenerationRequest(prompt="rifle", backend="dummy", faction="dominion", category="weapon",
-                            style_image_path=str(ref), style_strength=0.8, texture_size=512)
+                            style_image_paths=[str(ref)], style_strength=0.8, texture_size=512)
     result = generate(req, output_root=tmp_path / "out")
-    assert seen["image"].size == (64, 64) and seen["strength"] == 0.8
-    assert (result.output_dir / result.files["style_reference"]).is_file()
+    assert [i.size for i in seen["images"]] == [(64, 64)] and seen["strength"] == 0.8
+    assert (result.output_dir / result.files["style_reference_1"]).is_file()

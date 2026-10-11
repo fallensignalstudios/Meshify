@@ -49,7 +49,7 @@ class ResolvedStyle:
     pack_negative: str = ""  # pack-wide (no text, no cartoon...) (SDXL encoder 2)
     framing: str | None = None  # asset-type template, "{subject}" = the user's prompt
     aspect: str = "square"  # text-to-image frame: square, wide or tall
-    reference: Path | None = None  # style reference image (faction look)
+    references: list[Path] = field(default_factory=list)  # style images, most specific first
 
     def subject(self, prompt: str) -> str:
         """The user's prompt wrapped in the asset-type framing (framing first)."""
@@ -72,16 +72,52 @@ def _hex(color: str) -> tuple[int, int, int]:
     return tuple(int(color[i:i + 2], 16) for i in (0, 2, 4))
 
 
-def _reference(data: dict, rel: str | None) -> Path | None:
-    """Reference images are relative to the pack file. Missing files are skipped
-    (with a warning) so a pack still works before its art is added."""
-    if not rel:
-        return None
-    path = (data["_dir"] / rel).resolve()
-    if not path.is_file():
-        log.warning("Style reference %s not found; continuing without it.", path)
-        return None
-    return path
+IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
+MAX_STYLE_REFERENCES = int(os.environ.get("MESHIFY_MAX_STYLE_REFS", "4"))
+
+
+def _pack_references(data: dict, rel) -> list[Path]:
+    """`reference = "x.png"` or a list, relative to the pack file. Missing files
+    are skipped (with a warning) so a pack still works before its art exists."""
+    out = []
+    for item in [rel] if isinstance(rel, str) else (rel or []):
+        path = (data["_dir"] / item).resolve()
+        if path.is_file():
+            out.append(path)
+        else:
+            log.warning("Style reference %s not found; continuing without it.", path)
+    return out
+
+
+def reference_root(data: dict) -> Path:
+    """The reference library: <root>/<faction>/<asset type>/ and <root>/<faction>/."""
+    if env := os.environ.get("MESHIFY_REFERENCE_DIR"):
+        return Path(env)
+    return data["_dir"] / "references"
+
+
+def _images_in(folder: Path) -> list[Path]:
+    if not folder.is_dir():
+        return []
+    return sorted(p for p in folder.iterdir() if p.suffix.lower() in IMAGE_EXTS and p.is_file())
+
+
+def library_references(data: dict, faction: str | None, category: str | None) -> list[Path]:
+    """Images dropped into the library folders, most specific first."""
+    if not faction:
+        return []
+    root = reference_root(data) / faction
+    specific = _images_in(root / category) if category else []
+    return specific + _images_in(root)
+
+
+def _dedupe(paths: list[Path]) -> list[Path]:
+    seen, out = set(), []
+    for path in paths:
+        if path not in seen:
+            seen.add(path)
+            out.append(path)
+    return out
 
 
 def _style_dirs() -> list[Path]:
@@ -120,8 +156,22 @@ def list_packs() -> list[dict]:
                     "size_m": v.get("size_m"), "size_axis": v.get("size_axis", "height")}
                 for k, v in data["categories"].items()
             },
+            "references": _library_counts(data),
         })
     return out
+
+
+def _library_counts(data: dict) -> dict[str, int]:
+    """{"dominion": 2, "dominion/weapon": 3} for the folders that have images."""
+    counts = {}
+    for faction in data["factions"]:
+        root = reference_root(data) / faction
+        if n := len(_images_in(root)):
+            counts[faction] = n
+        for category in data["categories"]:
+            if n := len(_images_in(root / category)):
+                counts[f"{faction}/{category}"] = n
+    return counts
 
 
 def resolve(pack: str | None, faction: str | None, category: str | None,
@@ -176,6 +226,68 @@ def resolve(pack: str | None, faction: str | None, category: str | None,
         pivot=cat.get("pivot", "bottom_center"),
         grid_m=cat.get("grid_m"),
         framing=cat.get("prompt"),
-        reference=_reference(data, override.get("reference", fac.get("reference"))),
+        references=_dedupe([
+            *_pack_references(data, override.get("reference")),
+            *library_references(data, faction, category),
+            *_pack_references(data, fac.get("reference")),
+        ])[:MAX_STYLE_REFERENCES],
         aspect=cat.get("aspect", "square"),
     )
+
+
+# ------------------------------------------------------------ library edits
+
+def _library_folder(pack: str, faction: str, category: str | None) -> Path:
+    packs = load_packs()
+    if pack not in packs:
+        raise ValueError(f"Unknown style pack {pack!r}")
+    data = packs[pack]
+    # Only known names become folder names, so nothing can escape the library.
+    if faction not in data["factions"]:
+        raise ValueError(f"Unknown faction {faction!r}")
+    if category and category not in data["categories"]:
+        raise ValueError(f"Unknown asset type {category!r}")
+    folder = reference_root(data) / faction
+    return folder / category if category else folder
+
+
+def list_library(pack: str, faction: str, category: str | None) -> list[dict]:
+    """What a job with this faction + asset type would use, with where it comes from."""
+    style = resolve(pack, faction, category, None)
+    folder_specific = _library_folder(pack, faction, category) if category else None
+    folder_faction = _library_folder(pack, faction, None)
+    out = []
+    for path in style.references:
+        if folder_specific and path.parent == folder_specific.resolve():
+            scope = "type"
+        elif path.parent == folder_faction.resolve():
+            scope = "faction"
+        else:
+            scope = "pack"  # set in the TOML file; edit it there
+        out.append({"name": path.name, "scope": scope, "path": str(path)})
+    return out
+
+
+def add_reference(pack: str, faction: str, category: str | None, filename: str,
+                  content: bytes) -> Path:
+    suffix = Path(filename).suffix.lower()
+    if suffix not in IMAGE_EXTS:
+        raise ValueError(f"Reference images must be one of {sorted(IMAGE_EXTS)}")
+    stem = "".join(c if c.isalnum() or c in "-_" else "_" for c in Path(filename).stem)[:60]
+    folder = _library_folder(pack, faction, category)
+    folder.mkdir(parents=True, exist_ok=True)
+    target = folder / f"{stem or 'reference'}{suffix}"
+    n = 2
+    while target.exists():
+        target = folder / f"{stem or 'reference'}_{n}{suffix}"
+        n += 1
+    target.write_bytes(content)
+    return target
+
+
+def delete_reference(pack: str, faction: str, category: str | None, name: str) -> None:
+    folder = _library_folder(pack, faction, category)
+    target = folder / Path(name).name
+    if target.suffix.lower() not in IMAGE_EXTS or not target.is_file():
+        raise ValueError(f"No reference named {name!r} here")
+    target.unlink()

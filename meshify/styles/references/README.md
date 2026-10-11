@@ -1,24 +1,44 @@
-# Style reference images
+# Style reference library
 
-Drop faction concept art here and point the style pack at it, e.g. in
-`sovereign_call.toml`:
+Drop faction concept art into folders here and Meshify uses it automatically
+for **text prompts** with that faction:
 
-```toml
-[factions.dominion]
-reference = "references/dominion.png"
-
-[factions.dominion.overrides.weapon]
-reference = "references/dominion_weapon.png"
+```
+references/
+  dominion/                 <- used for every Dominion asset type
+    bronze_trim.png
+    oxblood_panels.png
+    weapon/                 <- used first for Dominion weapons
+      service_rifle.png
+      officer_rifle.png
+    modular_architecture/
+      corridor.png
+  reformation/
+    weapon/
+      ...
 ```
 
-When you generate from a **text prompt**, SDXL looks at the reference through
-IP-Adapter and borrows its colours and materials (bronze trim, oxblood enamel,
-amber glow...) while your prompt and the asset type still decide what the
-object is. Only the style is borrowed, not the exact shape.
+Folder names are the ids from `sovereign_call.toml`: factions `dominion`,
+`reformation`, `ancient`, `aurelion`, `eclipse`; asset types `small_prop`,
+`medium_prop`, `industrial_prop`, `modular_architecture`, `architecture_hero`,
+`weapon`, `hero_weapon`, `armor`, `ship_component`.
+
+You don't have to touch the folders yourself. In the web UI, pick a faction
+(and asset type) and use **+ Add for ...** under *Style references*. The
+thumbnails show what the next job will use, and × removes one.
+
+How it's used:
+- Up to 4 images per job (set by `MESHIFY_MAX_STYLE_REFS`), asset-type images
+  first, then faction-wide ones.
+- SDXL looks at them through IP-Adapter in style-only mode: it borrows colours,
+  materials and finish and blends several images, so the *shared* faction
+  look wins. Your prompt and asset type still decide what the object is.
+- One-off uploads in the UI (or `--style-image`, repeatable) replace the
+  library for a single job.
 
 Tips:
-- One clear object on a plain background works best.
-- Pick art with the faction's materials, not just its shapes.
-- Avoid lettering in references, or it may show up in generations.
-- In the web UI, uploading a "Style reference" overrides the pack's reference
-  for that job. "Style strength" sets how strongly it applies (0.6 default).
+- 2-4 images per folder: one clear object or material, plain background.
+- Pick images that show the faction's materials, not just shapes.
+- Avoid lettering, or it can creep into generations.
+- Commit this folder so the whole team shares the same faction look.
+  To keep it elsewhere, set `MESHIFY_REFERENCE_DIR`.

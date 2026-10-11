@@ -72,17 +72,20 @@ def generate(req: GenerationRequest, progress: ProgressFn | None = None,
     else:
         # Text-to-image sometimes zooms into a detail. If the object runs off the
         # edge of the frame, try the next seed; keep the least-cropped result.
-        style_ref_path = req.style_image_path or (style.reference if style else None)
-        style_image = Image.open(style_ref_path) if style_ref_path else None
-        if style_image is not None:
-            style_image.save(out / "style_reference.png")
-            result.files["style_reference"] = "style_reference.png"
+        # Uploaded style images replace the library; otherwise the faction's
+        # library references (most specific first) are used automatically.
+        ref_paths = req.style_image_paths or (style.references if style else [])
+        style_images = [Image.open(p) for p in ref_paths]
+        for i, img in enumerate(style_images, 1):
+            fname = f"style_reference_{i}.png"
+            img.save(out / fname)
+            result.files[f"style_reference_{i}"] = fname
         best = None
         for attempts in range(1, MAX_REFERENCE_ATTEMPTS + 1):
             seed = req.seed + attempts - 1
             progress(f"Generating photoreal reference image (try {attempts})", 0.05)
             candidate = images.text_to_image(req.prompt, seed, req.realism, style,
-                                             style_image=style_image,
+                                             style_images=style_images,
                                              style_strength=req.style_strength)
             progress("Removing background", 0.15)
             cut = images.remove_background(candidate)
@@ -166,6 +169,7 @@ def generate(req: GenerationRequest, progress: ProgressFn | None = None,
         "texture_size": texture_size,
         "emissive": "emissive" in result.files,
         "reference_attempts": attempts,
+        "style_references": len([k for k in result.files if k.startswith("style_reference_")]),
     }
     (out / "meshify.json").write_text(json.dumps({
         "request": req.to_dict(),

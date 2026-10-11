@@ -25,19 +25,18 @@ negative = "blue glow, white plastic"
 metals = ["#8c6239", "#b08d57", "#2b2b2e", "#4a4a52", "#c0c0c8"]  # bronze x2, blackened steel, dark chrome, ceremonial silver
 emissive = "#ffaa33"  # warm amber
 roughness_bias = -0.05
-# Style reference image (relative to this file), used by text prompts on SDXL.
-# reference = "references/dominion.png"
+# Style references: drop images into references/dominion/ (all Dominion assets)
+# or references/dominion/<asset type>/ - they're picked up automatically.
+# See references/README.md. A `reference = "path.png"` (or list) here also works.
 
 # Faction x asset-type overrides replace the faction prompt for that asset type.
 # Weapons need their own language: generic faction words lose to "rifle".
 [factions.dominion.overrides.weapon]
 prompt = "blackened steel Dominion imperial service weapon, burnished bronze trim outlining every armor panel, deep oxblood red enamel panels, glowing amber light strips, monolithic angular chassis, engraved crest"
-# reference = "references/dominion_weapon.png"   # concept art for colours/materials
 negative = "neon, cyberpunk, fantasy filigree, gold plated"
 
 [factions.dominion.overrides.hero_weapon]
 prompt = "blackened steel Dominion imperial officer weapon, polished bronze trim outlining every armor panel, deep oxblood red enamel panels, glowing amber energy core and light strips, crest-like sculpted plating, engraved insignia"
-# reference = "references/dominion_weapon.png"
 negative = "neon, cyberpunk, fantasy filigree, gold plated"
 
 [factions.reformation]
