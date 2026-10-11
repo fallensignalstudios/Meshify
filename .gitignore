@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+outputs/
+third_party/
+.pytest_cache/
+*.glb
+!meshify/web/*.glb
