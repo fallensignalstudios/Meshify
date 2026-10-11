@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -22,6 +23,9 @@ from .mesh import prepare_mesh
 log = logging.getLogger(__name__)
 
 ProgressFn = Callable[[str, float], None]
+
+MAX_REFERENCE_ATTEMPTS = int(os.environ.get("MESHIFY_REFERENCE_ATTEMPTS", "3"))
+MAX_BORDER_CONTACT = 0.03  # above this share of the border, the object is cut off
 
 
 @dataclass
@@ -59,19 +63,39 @@ def generate(req: GenerationRequest, progress: ProgressFn | None = None,
     t0 = time.time()
 
     # 1. Reference image
+    attempts = 1
     if req.image_path:
         progress("Loading reference image", 0.05)
         reference = Image.open(req.image_path)
+        progress("Removing background", 0.2)
+        isolated = images.remove_background(reference)
     else:
-        progress("Generating photoreal reference image", 0.05)
-        reference = images.text_to_image(req.prompt, req.seed, req.realism, style)
+        # Text-to-image sometimes zooms into a detail. If the object runs off the
+        # edge of the frame, try the next seed; keep the least-cropped result.
+        best = None
+        for attempts in range(1, MAX_REFERENCE_ATTEMPTS + 1):
+            seed = req.seed + attempts - 1
+            progress(f"Generating photoreal reference image (try {attempts})", 0.05)
+            candidate = images.text_to_image(req.prompt, seed, req.realism, style)
+            progress("Removing background", 0.15)
+            cut = images.remove_background(candidate)
+            contact = images.border_contact(cut)
+            if best is None or contact < best[2]:
+                best = (candidate, cut, contact)
+            if contact <= MAX_BORDER_CONTACT:
+                break
+            log.warning("Reference %d is cropped (%.0f%% of the border is object); retrying "
+                        "with seed %d", attempts, contact * 100, seed + 1)
+        reference, isolated, contact = best
+        if contact > MAX_BORDER_CONTACT:
+            log.warning("All %d references were cropped; using the least-cropped one. "
+                        "Try rewording the prompt or another seed.", attempts)
         if low_vram():
             images.release_text_to_image()
     reference.save(out / "reference.png")
     result.files["reference"] = "reference.png"
 
-    progress("Removing background", 0.2)
-    cutout = images.frame_object(images.remove_background(reference))
+    cutout = images.frame_object(isolated)
     cutout.save(out / "cutout.png")
     result.files["cutout"] = "cutout.png"
 
@@ -134,6 +158,7 @@ def generate(req: GenerationRequest, progress: ProgressFn | None = None,
         "seconds": round(time.time() - t0, 1),
         "texture_size": texture_size,
         "emissive": "emissive" in result.files,
+        "reference_attempts": attempts,
     }
     (out / "meshify.json").write_text(json.dumps({
         "request": req.to_dict(),

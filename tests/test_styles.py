@@ -51,7 +51,9 @@ def test_unknown_names_are_rejected():
 def test_styled_prompt_keeps_faction_and_no_text_negative():
     style = resolve(None, "reformation", "weapon", "frontier")
     subject, look = images.build_prompt_pair("sidearm", True, style)
-    assert subject.startswith("sidearm, Reformation")
+    # Framing comes first so SDXL shows the whole weapon, not a close-up.
+    assert subject.startswith("full-length side profile of an entire sidearm")
+    assert "Reformation" in subject
     assert "frontier weathering" in look and "grey background" in look
     negative = images.build_negative(style)
     assert "text" in negative and "gold" in negative
@@ -121,3 +123,45 @@ def test_end_to_end_dominion_weapon(tmp_path):
     scene = trimesh.load(result.output_dir / result.files["glb"])
     mesh = scene.to_geometry() if isinstance(scene, trimesh.Scene) else scene
     assert mesh.extents.max() == pytest.approx(1.0, rel=1e-3)  # weapon preset length
+
+
+def test_weapons_get_a_wide_frame_and_anti_closeup_negative():
+    assert resolve(None, None, "weapon", None).aspect == "wide"
+    assert resolve(None, None, "armor", None).aspect == "square"
+    assert images.ASPECT_SIZES["wide"] == (1344, 768)
+    assert "close-up" in images.build_negative(resolve(None, None, "weapon", None))
+
+
+def _cutout(box):
+    img = Image.new("RGBA", (400, 300), (0, 0, 0, 0))
+    ImageDraw.Draw(img).rectangle(box, fill=(120, 90, 60, 255))
+    return img
+
+
+def test_border_contact_detects_cropped_objects():
+    assert images.border_contact(_cutout([60, 60, 340, 240])) == 0.0  # fully inside
+    assert images.border_contact(_cutout([0, 40, 399, 299])) > 0.3  # runs off 3 edges
+
+
+def test_cropped_reference_is_retried_with_next_seed(tmp_path, monkeypatch):
+    seeds = []
+
+    def fake_t2i(prompt, seed, realism, style=None):
+        seeds.append(seed)
+        img = Image.new("RGB", (400, 300), (128, 128, 128))
+        box = [0, 0, 399, 299] if len(seeds) == 1 else [80, 80, 320, 220]  # 1st cropped
+        ImageDraw.Draw(img).rectangle(box, fill=(140, 98, 57))
+        return img
+
+    def fake_bg(img):
+        rgba = np.asarray(img.convert("RGBA")).copy()
+        rgba[..., 3] = np.where((rgba[..., :3] == 128).all(-1), 0, 255)
+        return Image.fromarray(rgba, "RGBA")
+
+    monkeypatch.setattr(images, "text_to_image", fake_t2i)
+    monkeypatch.setattr(images, "remove_background", fake_bg)
+    req = GenerationRequest(prompt="heavy assault rifle", backend="dummy", seed=7,
+                            faction="dominion", category="weapon", texture_size=512)
+    result = generate(req, output_root=tmp_path)
+    assert seeds == [7, 8]
+    assert result.stats["reference_attempts"] == 2

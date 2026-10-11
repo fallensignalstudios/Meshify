@@ -63,10 +63,14 @@ roughness_bias = 0.05
 # size_axis: "height" or "longest" (weapons/armour are measured by length).
 # pivot: "bottom_center" (props), "bottom_corner" (modular kits), "center".
 # grid_m: snap the largest footprint dimension to this grid (modular pieces).
+# prompt: "{subject}" is replaced by what you typed. Framing goes FIRST so the
+#   text-to-image model shows the whole object instead of a close-up.
+# aspect: "square", "wide" (1344x768, long things like rifles) or "tall".
 
 [categories.small_prop]
 label = "Small prop"
-prompt = "small hand-held prop, single object"
+prompt = "a complete {subject}, small hand-held prop, whole object visible"
+aspect = "square"
 tris = 3000
 texture = 1024
 size_m = 0.4
@@ -75,7 +79,8 @@ pivot = "bottom_center"
 
 [categories.medium_prop]
 label = "Medium prop"
-prompt = "prop, single object, crate or container scale"
+prompt = "a complete {subject}, whole prop visible"
+aspect = "square"
 tris = 10000
 texture = 2048
 size_m = 1.0
@@ -84,7 +89,8 @@ pivot = "bottom_center"
 
 [categories.industrial_prop]
 label = "Industrial prop"
-prompt = "functional sci-fi machinery, generator or console, mechanical construction"
+prompt = "a complete {subject}, functional sci-fi machinery, whole machine visible"
+aspect = "square"
 tris = 10000
 texture = 2048
 size_m = 1.8
@@ -93,7 +99,8 @@ pivot = "bottom_center"
 
 [categories.modular_architecture]
 label = "Modular architecture"
-prompt = "modular environment kit piece, straight edges, flat back, tileable architectural module"
+prompt = "a complete {subject}, modular environment kit piece, straight edges, flat back, front view"
+aspect = "square"
 tris = 15000
 texture = 2048
 size_m = 4.0
@@ -103,7 +110,8 @@ grid_m = 1.0
 
 [categories.architecture_hero]
 label = "Architecture hero piece"
-prompt = "monumental architectural centerpiece, grand scale"
+prompt = "a complete {subject}, monumental architectural centerpiece, whole structure visible"
+aspect = "tall"
 tris = 50000
 texture = 4096
 size_m = 8.0
@@ -112,7 +120,8 @@ pivot = "bottom_center"
 
 [categories.weapon]
 label = "Weapon"
-prompt = "weapon, side view, full length visible, strong silhouette, functional detail"
+prompt = "full-length side profile of an entire {subject}, whole weapon from end to end, strong silhouette"
+aspect = "wide"
 tris = 20000
 texture = 2048
 size_m = 1.0
@@ -121,7 +130,8 @@ pivot = "center"
 
 [categories.hero_weapon]
 label = "Hero weapon"
-prompt = "legendary hero weapon, side view, full length visible, iconic silhouette, intricate functional detail"
+prompt = "full-length side profile of an entire legendary {subject}, whole weapon from end to end, iconic silhouette"
+aspect = "wide"
 tris = 40000
 texture = 4096
 size_m = 1.2
@@ -130,7 +140,8 @@ pivot = "center"
 
 [categories.armor]
 label = "Armor piece"
-prompt = "single armor piece, helmet or pauldron or chestplate, separable, no body inside"
+prompt = "a single complete {subject}, separate armor piece, no body inside, whole piece visible"
+aspect = "square"
 tris = 15000
 texture = 2048
 size_m = 0.45
@@ -139,7 +150,8 @@ pivot = "center"
 
 [categories.ship_component]
 label = "Ship component"
-prompt = "modular spaceship component, thruster or hull module or docking machinery"
+prompt = "a complete {subject}, modular spaceship component, whole part visible"
+aspect = "wide"
 tris = 15000
 texture = 2048
 size_m = 3.0

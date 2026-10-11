@@ -44,13 +44,18 @@ STYLIZED_TERMS = (
 NEGATIVE_PROMPT = (
     "cartoon, stylized, anime, illustration, painting, drawing, cel shading, low poly, "
     "toy, plastic look, multiple objects, cropped, cut off, text, letters, logo, watermark, "
-    "dramatic lighting, hard shadows, busy background"
+    "dramatic lighting, hard shadows, busy background, close-up, macro, detail shot, "
+    "partial view, out of frame"
 )
+
+# SDXL/FLUX-native resolutions. Long objects get a wide frame so they aren't cropped.
+ASPECT_SIZES = {"square": (1024, 1024), "wide": (1344, 768), "tall": (768, 1344)}
 
 
 # Shorter framing used with style packs, leaving token room for faction detail.
 STYLE_FRAMING = (
-    "single object centered, whole object in frame, plain neutral grey background, "
+    "single object centered, entire object in frame with empty margin around it, "
+    "plain neutral grey background, "
     "soft even studio lighting, physically based materials, sharp focus"
 )
 
@@ -77,7 +82,7 @@ def build_prompt_pair(prompt: str, realism: bool, style: "ResolvedStyle") -> tup
     Encoder 1 gets what the object *is* (subject, faction, asset type); encoder
     2 gets how it looks and is framed (condition, render style, studio framing).
     """
-    subject = ", ".join(p for p in [prompt.strip().rstrip("."), *style.prompt_parts] if p)
+    subject = ", ".join(p for p in [style.subject(prompt), *style.prompt_parts] if p)
     look = list(style.look_parts)
     if realism:
         look += [style.render, STYLE_FRAMING]
@@ -125,7 +130,8 @@ def text_to_image(prompt: str, seed: int, realism: bool,
             _t2i_pipe.enable_model_cpu_offload()
         _t2i_name = model
 
-    kwargs = {"generator": torch.Generator("cpu").manual_seed(seed), "width": 1024, "height": 1024}
+    width, height = ASPECT_SIZES.get(style.aspect if style else "square", ASPECT_SIZES["square"])
+    kwargs = {"generator": torch.Generator("cpu").manual_seed(seed), "width": width, "height": height}
     if style is not None and "xl" in model.lower():
         kwargs["prompt"], kwargs["prompt_2"] = build_prompt_pair(prompt, realism, style)
     else:
@@ -171,6 +177,20 @@ def _remove_flat_background(image: Image.Image, tolerance: float = 28.0) -> Imag
     alpha = np.clip((dist - tolerance) / tolerance, 0, 1) * 255
     rgba[..., 3] = alpha
     return Image.fromarray(rgba.astype(np.uint8), "RGBA")
+
+
+def border_contact(image: Image.Image, band: float = 0.01) -> float:
+    """Fraction of the image border covered by the object (0 = fully inside the frame).
+
+    A high value means the object runs off the edge, i.e. the reference is a
+    cropped close-up and would give a partial 3D model.
+    """
+    alpha = np.asarray(image.convert("RGBA"))[..., 3] > 128
+    h, w = alpha.shape
+    b = max(1, int(round(min(h, w) * band)))
+    edges = np.concatenate([alpha[:b].ravel(), alpha[-b:].ravel(),
+                            alpha[:, :b].ravel(), alpha[:, -b:].ravel()])
+    return float(edges.mean())
 
 
 def frame_object(image: Image.Image, size: int = 518, fill: float = 0.85) -> Image.Image:

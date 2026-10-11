@@ -19,10 +19,25 @@ In the web UI, they're the **Faction / Asset type / Condition** dropdowns.
 | | Prompt | Materials | Mesh |
 |---|---|---|---|
 | **Faction** | Design language and palette words, plus things to avoid | Metal swatches (→ metallic map), energy colour (→ emissive mask), roughness bias | — |
-| **Asset type** | Framing ("side view, full length" for weapons...) | Texture size | Triangle budget, real-world size, size axis, pivot, grid snapping |
+| **Asset type** | Framing template + aspect ratio (wide for weapons) | Texture size | Triangle budget, real-world size, size axis, pivot, grid snapping |
 | **Condition** | Wear words (polished … torn open) | Roughness offset, AO strength | — |
 
 Anything you set explicitly (texture, triangle budget, size) overrides the preset.
+
+## Framing: whole objects, not close-ups
+
+Text-to-image models love zooming into a cool detail, and a cropped reference
+gives a partial 3D model. Three things guard against that:
+
+- **Framing first.** Each asset type's `prompt` is a template, and `{subject}`
+  is replaced by what you typed. For example, weapons become "full-length side
+  profile of an entire heavy assault rifle, whole weapon from end to end...". Words
+  at the start of a prompt carry the most weight.
+- **Aspect ratio.** `aspect = "wide"` renders 1344×768 for long things
+  (weapons, ship parts), `"tall"` is 768×1344, and the default is square.
+- **Crop check.** After background removal, if the object touches the edge of
+  the frame, Meshify retries with the next seed (up to 3 tries, set by
+  `MESHIFY_REFERENCE_ATTEMPTS`) and keeps the least-cropped reference.
 
 ## How the faction materials work
 

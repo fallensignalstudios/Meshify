@@ -32,7 +32,7 @@ class MaterialStyle:
 
 @dataclass
 class ResolvedStyle:
-    prompt_parts: list[str]  # what it is: faction look + asset type
+    prompt_parts: list[str]  # what it is: faction look
     look_parts: list[str]  # how worn it is: condition
     negative: str
     render: str | None
@@ -43,9 +43,20 @@ class ResolvedStyle:
     size_axis: str = "height"
     pivot: str = "bottom_center"
     grid_m: float | None = None
+    framing: str | None = None  # asset-type template, "{subject}" = the user's prompt
+    aspect: str = "square"  # text-to-image frame: square, wide or tall
+
+    def subject(self, prompt: str) -> str:
+        """The user's prompt wrapped in the asset-type framing (framing first)."""
+        prompt = prompt.strip().rstrip(".")
+        if not self.framing:
+            return prompt
+        if "{subject}" in self.framing:
+            return self.framing.replace("{subject}", prompt)
+        return f"{prompt}, {self.framing}"
 
     def apply_to_prompt(self, prompt: str) -> str:
-        parts = [prompt.strip().rstrip("."), *self.prompt_parts, *self.look_parts]
+        parts = [self.subject(prompt), *self.prompt_parts, *self.look_parts]
         return ", ".join(p for p in parts if p)
 
 
@@ -128,7 +139,7 @@ def resolve(pack: str | None, faction: str | None, category: str | None,
     )
     return ResolvedStyle(
         # Order matters for 77-token CLIP models: faction look first, then framing.
-        prompt_parts=[p for p in (fac.get("prompt"), cat.get("prompt")) if p],
+        prompt_parts=[fac["prompt"]] if fac.get("prompt") else [],
         look_parts=[cond["prompt"]] if cond.get("prompt") else [],
         negative=negative,
         render=info.get("render"),
@@ -139,4 +150,6 @@ def resolve(pack: str | None, faction: str | None, category: str | None,
         size_axis=cat.get("size_axis", "height"),
         pivot=cat.get("pivot", "bottom_center"),
         grid_m=cat.get("grid_m"),
+        framing=cat.get("prompt"),
+        aspect=cat.get("aspect", "square"),
     )
