@@ -35,6 +35,8 @@ class GenerationRequest:
     faction: str | None = None
     category: str | None = None
     condition: str | None = None
+    style_image_path: str | None = None  # overrides the pack's faction reference
+    style_strength: float = 0.6  # how strongly the reference's look is applied
 
     # Realism pipeline
     realism: bool = True  # photoreal prompt shaping + delighting + PBR maps
@@ -53,6 +55,8 @@ class GenerationRequest:
     def validate(self) -> None:
         if not self.prompt and not self.image_path:
             raise ValueError("Provide a prompt, an image, or both.")
+        if not 0.0 <= self.style_strength <= 1.0:
+            raise ValueError("style_strength must be between 0 and 1.")
         if not 0.0 <= self.delight_strength <= 1.0:
             raise ValueError("delight_strength must be between 0 and 1.")
         if self.texture_size is not None and self.texture_size not in TEXTURE_SIZES:

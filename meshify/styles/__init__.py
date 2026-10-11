@@ -6,6 +6,7 @@ MESHIFY_STYLE_DIR at a folder of *.toml files (same format).
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from dataclasses import dataclass, field
@@ -18,6 +19,7 @@ else:  # TRELLIS's default environment is Python 3.10
     import tomli as tomllib
 
 BUILTIN_DIR = Path(__file__).parent
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -47,6 +49,7 @@ class ResolvedStyle:
     pack_negative: str = ""  # pack-wide (no text, no cartoon...) (SDXL encoder 2)
     framing: str | None = None  # asset-type template, "{subject}" = the user's prompt
     aspect: str = "square"  # text-to-image frame: square, wide or tall
+    reference: Path | None = None  # style reference image (faction look)
 
     def subject(self, prompt: str) -> str:
         """The user's prompt wrapped in the asset-type framing (framing first)."""
@@ -69,6 +72,18 @@ def _hex(color: str) -> tuple[int, int, int]:
     return tuple(int(color[i:i + 2], 16) for i in (0, 2, 4))
 
 
+def _reference(data: dict, rel: str | None) -> Path | None:
+    """Reference images are relative to the pack file. Missing files are skipped
+    (with a warning) so a pack still works before its art is added."""
+    if not rel:
+        return None
+    path = (data["_dir"] / rel).resolve()
+    if not path.is_file():
+        log.warning("Style reference %s not found; continuing without it.", path)
+        return None
+    return path
+
+
 def _style_dirs() -> list[Path]:
     dirs = [BUILTIN_DIR]
     if extra := os.environ.get("MESHIFY_STYLE_DIR"):
@@ -84,6 +99,7 @@ def load_packs() -> dict[str, dict]:
             with path.open("rb") as fh:
                 data = tomllib.load(fh)
             pack_id = data.get("pack", {}).get("id", path.stem)
+            data["_dir"] = path.parent
             for section in ("factions", "categories", "conditions"):
                 data.setdefault(section, {})
             packs[pack_id] = data
@@ -160,5 +176,6 @@ def resolve(pack: str | None, faction: str | None, category: str | None,
         pivot=cat.get("pivot", "bottom_center"),
         grid_m=cat.get("grid_m"),
         framing=cat.get("prompt"),
+        reference=_reference(data, override.get("reference", fac.get("reference"))),
         aspect=cat.get("aspect", "square"),
     )

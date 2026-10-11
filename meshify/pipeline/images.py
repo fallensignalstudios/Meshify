@@ -132,64 +132,114 @@ def build_negative_pair(style: "ResolvedStyle") -> tuple[str, str]:
     return first, _merge_terms(*rest, exclude=wanted)
 
 
+# IP-Adapter lets SDXL copy materials/colours from a style reference image.
+# The ViT-H variant keeps the image encoder small (~1.2 GB) for 12 GB cards.
+IP_ADAPTER_REPO = "h94/IP-Adapter"
+IP_ADAPTER_WEIGHTS = os.environ.get("MESHIFY_IP_ADAPTER", "ip-adapter_sdxl_vit-h.safetensors")
+
 _t2i_pipe = None
-_t2i_name: str | None = None
+_t2i_key: tuple | None = None
+
+
+def build_t2i_kwargs(model: str, prompt: str, realism: bool,
+                     style: "ResolvedStyle | None" = None) -> dict:
+    """Prompt, negative and size arguments for the diffusers call (no torch needed)."""
+    width, height = ASPECT_SIZES.get(style.aspect if style else "square", ASPECT_SIZES["square"])
+    kwargs: dict = {"width": width, "height": height}
+    is_sdxl = "xl" in model.lower()
+    if style is not None and is_sdxl:
+        kwargs["prompt"], kwargs["prompt_2"] = build_prompt_pair(prompt, realism, style)
+    else:
+        # FLUX's T5 encoder reads up to 512 tokens, so it gets everything.
+        kwargs["prompt"] = build_prompt(prompt, realism, style)
+
+    if "schnell" in model.lower():
+        # FLUX schnell is distilled: 4 steps, no CFG, no negative prompt.
+        kwargs.update(num_inference_steps=4, guidance_scale=0.0)
+        return kwargs
+
+    kwargs.update(num_inference_steps=30, guidance_scale=5.0)
+    if "prompt_2" in kwargs:
+        kwargs["negative_prompt"], kwargs["negative_prompt_2"] = build_negative_pair(style)
+    else:
+        kwargs["negative_prompt"] = build_negative(style)
+    if is_sdxl:
+        for key in ("prompt", "prompt_2", "negative_prompt", "negative_prompt_2"):
+            if key in kwargs and approx_clip_tokens(kwargs[key]) > CLIP_TOKEN_LIMIT:
+                log.warning("%s may exceed SDXL's 77-token limit and get cut off; "
+                            "shorten the prompt or the style pack text: %s", key, kwargs[key])
+    return kwargs
+
+
+def _load_pipeline(model: str, with_ip_adapter: bool):
+    import torch
+    from diffusers import AutoPipelineForText2Image
+
+    is_flux = "flux" in model.lower()
+    dtype = torch.bfloat16 if is_flux else torch.float16
+    extra = {}
+    if with_ip_adapter:
+        from transformers import CLIPVisionModelWithProjection
+
+        extra["image_encoder"] = CLIPVisionModelWithProjection.from_pretrained(
+            IP_ADAPTER_REPO, subfolder="models/image_encoder", torch_dtype=dtype)
+    pipe = AutoPipelineForText2Image.from_pretrained(model, torch_dtype=dtype, **extra)
+    if with_ip_adapter:
+        pipe.load_ip_adapter(IP_ADAPTER_REPO, subfolder="sdxl_models",
+                             weight_name=IP_ADAPTER_WEIGHTS)
+    if is_flux and low_vram():
+        # Streams weights layer by layer: slow, but FLUX runs on 12 GB.
+        pipe.enable_sequential_cpu_offload()
+    else:
+        pipe.enable_model_cpu_offload()
+    return pipe
 
 
 def text_to_image(prompt: str, seed: int, realism: bool,
-                  style: "ResolvedStyle | None" = None) -> Image.Image:
-    """Generate a reference image. Needs `pip install meshify[text]` and a GPU."""
-    global _t2i_pipe, _t2i_name
+                  style: "ResolvedStyle | None" = None,
+                  style_image: Image.Image | None = None,
+                  style_strength: float = 0.6) -> Image.Image:
+    """Generate a reference image. Needs `pip install meshify[text]` and a GPU.
+
+    `style_image` (SDXL only) lends its colours and materials via IP-Adapter;
+    `style_strength` 0..1 sets how strongly.
+    """
+    global _t2i_pipe, _t2i_key
     if importlib.util.find_spec("diffusers") is None:
         raise RuntimeError(
             "Text prompts need the text-to-image extra: pip install -e .[text] "
             "(or supply an image instead)."
         )
     import torch
-    from diffusers import AutoPipelineForText2Image
 
     model = t2i_model()
-    if _t2i_pipe is None or _t2i_name != model:
+    use_ip = style_image is not None
+    if use_ip and "xl" not in model.lower():
+        log.warning("Style reference images need an SDXL model (current: %s); ignoring it.", model)
+        use_ip = False
+    key = (model, use_ip)
+    if _t2i_pipe is None or _t2i_key != key:
         release_text_to_image()
-        is_flux = "flux" in model.lower()
-        dtype = torch.bfloat16 if is_flux else torch.float16
-        _t2i_pipe = AutoPipelineForText2Image.from_pretrained(model, torch_dtype=dtype)
-        if is_flux and low_vram():
-            # Streams weights layer by layer: slow, but FLUX runs on 12 GB.
-            _t2i_pipe.enable_sequential_cpu_offload()
-        else:
-            _t2i_pipe.enable_model_cpu_offload()
-        _t2i_name = model
+        _t2i_pipe = _load_pipeline(model, use_ip)
+        _t2i_key = key
 
-    width, height = ASPECT_SIZES.get(style.aspect if style else "square", ASPECT_SIZES["square"])
-    kwargs = {"generator": torch.Generator("cpu").manual_seed(seed), "width": width, "height": height}
-    if style is not None and "xl" in model.lower():
-        kwargs["prompt"], kwargs["prompt_2"] = build_prompt_pair(prompt, realism, style)
-    else:
-        # FLUX's T5 encoder reads up to 512 tokens, so it gets everything.
-        kwargs["prompt"] = build_prompt(prompt, realism, style)
-    if "schnell" in model.lower():
-        # FLUX schnell is distilled: 4 steps, no CFG, no negative prompt.
-        kwargs.update(num_inference_steps=4, guidance_scale=0.0)
-    else:
-        kwargs.update(num_inference_steps=30, guidance_scale=5.0)
-        if "prompt_2" in kwargs:
-            kwargs["negative_prompt"], kwargs["negative_prompt_2"] = build_negative_pair(style)
-        for key in ("prompt", "prompt_2", "negative_prompt", "negative_prompt_2"):
-            if key in kwargs and approx_clip_tokens(kwargs[key]) > CLIP_TOKEN_LIMIT:
-                log.warning("%s may exceed SDXL's 77-token limit and get cut off; "
-                            "shorten the prompt or the style pack text: %s", key, kwargs[key])
-        else:
-            kwargs["negative_prompt"] = build_negative(style)
+    kwargs = build_t2i_kwargs(model, prompt, realism, style)
+    kwargs["generator"] = torch.Generator("cpu").manual_seed(seed)
+    if use_ip:
+        # InstantStyle: inject the reference only into the style-carrying
+        # attention block, so it lends colours/materials, not its exact shape.
+        scale = {"up": {"block_0": [0.0, style_strength, 0.0]}}
+        _t2i_pipe.set_ip_adapter_scale(scale)
+        kwargs["ip_adapter_image"] = style_image.convert("RGB")
     return _t2i_pipe(**kwargs).images[0]
 
 
 def release_text_to_image() -> None:
     """Unload the text-to-image model so the 3D model gets the whole GPU."""
-    global _t2i_pipe, _t2i_name
+    global _t2i_pipe, _t2i_key
     if _t2i_pipe is not None:
         _t2i_pipe = None
-        _t2i_name = None
+        _t2i_key = None
         free_cuda()
 
 

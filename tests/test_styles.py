@@ -146,7 +146,7 @@ def test_border_contact_detects_cropped_objects():
 def test_cropped_reference_is_retried_with_next_seed(tmp_path, monkeypatch):
     seeds = []
 
-    def fake_t2i(prompt, seed, realism, style=None):
+    def fake_t2i(prompt, seed, realism, style=None, **_):
         seeds.append(seed)
         img = Image.new("RGB", (400, 300), (128, 128, 128))
         box = [0, 0, 399, 299] if len(seeds) == 1 else [80, 80, 320, 220]  # 1st cropped
@@ -170,8 +170,11 @@ def test_cropped_reference_is_retried_with_next_seed(tmp_path, monkeypatch):
 def test_dominion_weapons_use_their_own_language_and_avoid_real_guns():
     weapon = resolve(None, "dominion", "weapon", None)
     text = weapon.apply_to_prompt("heavy assault rifle")
-    for word in ["monolithic armored chassis", "burnished bronze", "oxblood", "amber", "heraldic"]:
+    for word in ["blackened steel", "bronze trim", "oxblood", "amber", "monolithic"]:
         assert word in text
+    # Colours lead the faction text so SDXL doesn't drop them.
+    faction_text = weapon.prompt_parts[0]
+    assert faction_text.index("bronze") < faction_text.index("monolithic")
     assert "AK-47" in weapon.negative and "wood furniture" in weapon.negative
     # The override only applies to weapons; Dominion architecture keeps the base look.
     arch = resolve(None, "dominion", "modular_architecture", None).apply_to_prompt("doorway")
@@ -201,3 +204,56 @@ def test_negative_split_keeps_framing_negatives_on_second_encoder():
     first, second = images.build_negative_pair(resolve(None, "dominion", "weapon", "frontier"))
     assert "AK-47" in first and "close-up" in second and "text" in second
     assert not set(first.split(", ")) & set(second.split(", "))
+
+
+def test_sdxl_negatives_stay_split_between_encoders():
+    # Regression: a misplaced for/else used to overwrite the split negative.
+    kwargs = images.build_t2i_kwargs("SG161222/RealVisXL_V5.0", "heavy assault rifle", True,
+                                     resolve(None, "dominion", "weapon", "frontier"))
+    assert "AK-47" in kwargs["negative_prompt"] and "close-up" not in kwargs["negative_prompt"]
+    assert "close-up" in kwargs["negative_prompt_2"]
+    assert (kwargs["width"], kwargs["height"]) == (1344, 768)
+
+
+def test_flux_gets_one_prompt_and_no_negative():
+    kwargs = images.build_t2i_kwargs("black-forest-labs/FLUX.1-schnell", "rifle", True,
+                                     resolve(None, "dominion", "weapon", None))
+    assert "prompt_2" not in kwargs and "negative_prompt" not in kwargs
+    assert kwargs["num_inference_steps"] == 4
+
+
+def test_pack_reference_image_resolves_relative_to_pack(tmp_path, monkeypatch):
+    from meshify import styles
+
+    (tmp_path / "references").mkdir()
+    Image.new("RGB", (8, 8), (140, 98, 57)).save(tmp_path / "references" / "dom.png")
+    (tmp_path / "test.toml").write_text(
+        '[pack]\nid = "t"\n[factions.dom]\nprompt = "x"\nreference = "references/dom.png"\n'
+        '[factions.dom.overrides.weapon]\nreference = "references/missing.png"\n'
+        '[categories.weapon]\nprompt = "{subject}"\n[categories.prop]\nprompt = "{subject}"\n')
+    monkeypatch.setenv("MESHIFY_STYLE_DIR", str(tmp_path))
+    styles.load_packs.cache_clear()
+    try:
+        assert resolve("t", "dom", "prop", None).reference == tmp_path / "references" / "dom.png"
+        assert resolve("t", "dom", "weapon", None).reference is None  # missing file: skipped
+    finally:
+        styles.load_packs.cache_clear()
+
+
+def test_style_reference_is_passed_to_text_to_image(tmp_path, monkeypatch):
+    seen = {}
+    ref = tmp_path / "concept.png"
+    Image.new("RGB", (64, 64), (140, 98, 57)).save(ref)
+
+    def fake_t2i(prompt, seed, realism, style=None, style_image=None, style_strength=0.6):
+        seen["image"], seen["strength"] = style_image, style_strength
+        img = Image.new("RGB", (400, 300), (128, 128, 128))
+        ImageDraw.Draw(img).rectangle([80, 80, 320, 220], fill=(140, 98, 57))
+        return img
+
+    monkeypatch.setattr(images, "text_to_image", fake_t2i)
+    req = GenerationRequest(prompt="rifle", backend="dummy", faction="dominion", category="weapon",
+                            style_image_path=str(ref), style_strength=0.8, texture_size=512)
+    result = generate(req, output_root=tmp_path / "out")
+    assert seen["image"].size == (64, 64) and seen["strength"] == 0.8
+    assert (result.output_dir / result.files["style_reference"]).is_file()

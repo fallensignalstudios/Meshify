@@ -50,8 +50,8 @@ def _worker() -> None:
             log.error("Job %s failed:\n%s", job_id, traceback.format_exc())
             job.update(status="error", error=str(exc))
         finally:
-            if req.image_path and Path(req.image_path).parent.name.startswith("meshify-upload-"):
-                shutil.rmtree(Path(req.image_path).parent, ignore_errors=True)
+            if req.extra.get("upload_dir"):
+                shutil.rmtree(req.extra["upload_dir"], ignore_errors=True)
             _queue.task_done()
 
 
@@ -94,13 +94,18 @@ async def create_job(
     faction: str = Form(""),
     category: str = Form(""),
     condition: str = Form(""),
+    style_image: UploadFile | None = File(None),
+    style_strength: float = Form(0.6),
     asset_name: str = Form("asset"),
 ) -> dict:
-    image_path = None
+    image_path = style_path = None
+    tmp = Path(tempfile.mkdtemp(prefix="meshify-upload-"))
     if image is not None and image.filename:
-        tmp = Path(tempfile.mkdtemp(prefix="meshify-upload-"))
         image_path = tmp / ("input" + Path(image.filename).suffix.lower())
         image_path.write_bytes(await image.read())
+    if style_image is not None and style_image.filename:
+        style_path = tmp / ("style" + Path(style_image.filename).suffix.lower())
+        style_path.write_bytes(await style_image.read())
 
     try:
         req = GenerationRequest(
@@ -119,13 +124,15 @@ async def create_job(
             faction=faction or None,
             category=category or None,
             condition=condition or None,
+            style_image_path=str(style_path) if style_path else None,
+            style_strength=style_strength,
             asset_name=asset_name,
         )
         req.validate()
     except (ValueError, TypeError) as exc:
-        if image_path:
-            shutil.rmtree(image_path.parent, ignore_errors=True)
+        shutil.rmtree(tmp, ignore_errors=True)
         raise HTTPException(400, str(exc))
+    req.extra["upload_dir"] = str(tmp)
 
     job_id = uuid.uuid4().hex[:12]
     _jobs[job_id] = {"id": job_id, "status": "queued", "stage": "Queued", "progress": 0.0,

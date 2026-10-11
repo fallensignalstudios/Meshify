@@ -74,6 +74,28 @@ Keep `prompt` short. On 12 GB cards the text-to-image model (SDXL) reads about
 75 tokens per encoder. Meshify sends subject + faction + asset type to one
 encoder and condition + framing to the other, but it's still worth staying tight.
 
+## Style reference images (the strongest lever)
+
+Words only get you so far: "bronze trim outlining every panel" means many
+things to a model. A **style reference** shows it. On SDXL (the default on
+12 GB cards), Meshify feeds the reference through IP-Adapter in *style-only*
+mode (InstantStyle): the generated image borrows the reference's colours,
+materials and finish, while your prompt and the asset type still decide what
+the object is.
+
+- **Per faction, in the pack:** `reference = "references/dominion.png"` under
+  `[factions.dominion]`, or under an override such as
+  `[factions.dominion.overrides.weapon]` for weapon-specific art. Paths are
+  relative to the TOML file. See `meshify/styles/references/README.md`.
+- **Per job:** "Style reference" upload in the UI, or `--style-image art.png`.
+  This beats the pack's reference.
+- **Style strength** (0-1, default 0.6): raise it if the colours don't come
+  through, lower it if the result copies too much.
+
+The first use downloads the IP-Adapter weights (~1.5 GB, Apache-2.0). Style
+references apply to text prompts only. When you upload a reference image *as
+the input*, it already defines the look.
+
 ### Per-asset-type faction language (overrides)
 
 Generic faction words lose to strong nouns: "Dominion... assault rifle" still

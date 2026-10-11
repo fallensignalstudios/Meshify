@@ -72,11 +72,18 @@ def generate(req: GenerationRequest, progress: ProgressFn | None = None,
     else:
         # Text-to-image sometimes zooms into a detail. If the object runs off the
         # edge of the frame, try the next seed; keep the least-cropped result.
+        style_ref_path = req.style_image_path or (style.reference if style else None)
+        style_image = Image.open(style_ref_path) if style_ref_path else None
+        if style_image is not None:
+            style_image.save(out / "style_reference.png")
+            result.files["style_reference"] = "style_reference.png"
         best = None
         for attempts in range(1, MAX_REFERENCE_ATTEMPTS + 1):
             seed = req.seed + attempts - 1
             progress(f"Generating photoreal reference image (try {attempts})", 0.05)
-            candidate = images.text_to_image(req.prompt, seed, req.realism, style)
+            candidate = images.text_to_image(req.prompt, seed, req.realism, style,
+                                             style_image=style_image,
+                                             style_strength=req.style_strength)
             progress("Removing background", 0.15)
             cut = images.remove_background(candidate)
             contact = images.border_contact(cut)

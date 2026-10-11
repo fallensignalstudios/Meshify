@@ -25,15 +25,19 @@ negative = "blue glow, white plastic"
 metals = ["#8c6239", "#b08d57", "#2b2b2e", "#4a4a52", "#c0c0c8"]  # bronze x2, blackened steel, dark chrome, ceremonial silver
 emissive = "#ffaa33"  # warm amber
 roughness_bias = -0.05
+# Style reference image (relative to this file), used by text prompts on SDXL.
+# reference = "references/dominion.png"
 
 # Faction x asset-type overrides replace the faction prompt for that asset type.
 # Weapons need their own language: generic faction words lose to "rifle".
 [factions.dominion.overrides.weapon]
-prompt = "Dominion imperial state-issued service weapon, monolithic armored chassis, angular sculpted plating, integrated sight, blackened steel, burnished bronze plates, oxblood enamel panels, recessed amber energy channels, heraldic vents, engraved crest"
+prompt = "blackened steel Dominion imperial service weapon, burnished bronze trim outlining every armor panel, deep oxblood red enamel panels, glowing amber light strips, monolithic angular chassis, engraved crest"
+# reference = "references/dominion_weapon.png"   # concept art for colours/materials
 negative = "neon, cyberpunk, fantasy filigree, gold plated"
 
 [factions.dominion.overrides.hero_weapon]
-prompt = "Dominion imperial officer weapon, monolithic armored chassis, crest-like sculpted plating, blackened steel, burnished bronze trim, oxblood enamel, contained amber energy core, heraldic vents, engraved insignia housing"
+prompt = "blackened steel Dominion imperial officer weapon, polished bronze trim outlining every armor panel, deep oxblood red enamel panels, glowing amber energy core and light strips, crest-like sculpted plating, engraved insignia"
+# reference = "references/dominion_weapon.png"
 negative = "neon, cyberpunk, fantasy filigree, gold plated"
 
 [factions.reformation]

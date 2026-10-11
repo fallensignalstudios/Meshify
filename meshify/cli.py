@@ -26,6 +26,8 @@ def _cmd_generate(args: argparse.Namespace) -> int:
         faction=args.faction,
         category=args.type,
         condition=args.condition,
+        style_image_path=args.style_image,
+        style_strength=args.style_strength,
         asset_name=args.name,
     )
     result = generate(req)
@@ -104,6 +106,9 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--faction", "-f", help="e.g. dominion, reformation, ancient, aurelion, eclipse")
     g.add_argument("--type", "-t", help="Asset type, e.g. weapon, modular_architecture, armor")
     g.add_argument("--condition", "-c", help="e.g. pristine, maintained, frontier, derelict")
+    g.add_argument("--style-image", help="Style reference image: its colours/materials guide "
+                   "the text-to-image step (SDXL). Default: the faction's pack reference")
+    g.add_argument("--style-strength", type=float, default=0.6, help="0..1, default 0.6")
     g.set_defaults(func=_cmd_generate)
 
     s = sub.add_parser("serve", help="Start the web UI")
