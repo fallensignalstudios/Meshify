@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meshify</title>
+<!-- @google/model-viewer 3.5.0 (Apache-2.0), vendored so Meshify works fully offline -->
+<script type="module" src="/static/vendor/model-viewer.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1114; --panel: #171a1f; --line: #262a31; --text: #e6e8eb;
+    --muted: #8b929c; --accent: #e0a458; --error: #e5605a; --ok: #6fbf73;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.45 system-ui, -apple-system, Segoe UI, sans-serif; }
+  header { padding: 14px 20px; border-bottom: 1px solid var(--line);
+           display: flex; align-items: baseline; gap: 12px; }
+  header h1 { margin: 0; font-size: 18px; letter-spacing: .02em; }
+  header span { color: var(--muted); }
+  main { display: grid; grid-template-columns: 340px 1fr; min-height: calc(100vh - 53px); }
+  @media (max-width: 800px) { main { grid-template-columns: 1fr; } }
+  aside { padding: 16px 20px; border-right: 1px solid var(--line); background: var(--panel); }
+  label { display: block; margin: 12px 0 4px; color: var(--muted); font-size: 12px;
+          text-transform: uppercase; letter-spacing: .05em; }
+  input, select, textarea { width: 100%; padding: 8px 10px; background: var(--bg);
+          color: var(--text); border: 1px solid var(--line); border-radius: 6px; font: inherit; }
+  textarea { resize: vertical; min-height: 70px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .check { display: flex; align-items: center; gap: 8px; margin-top: 14px; color: var(--text);
+           text-transform: none; font-size: 14px; letter-spacing: 0; }
+  .check input { width: auto; }
+  button { margin-top: 18px; width: 100%; padding: 11px; border: 0; border-radius: 6px;
+           background: var(--accent); color: #1a1205; font-weight: 600; font-size: 15px;
+           cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  section { display: grid; grid-template-rows: 1fr auto; min-width: 0; }
+  model-viewer { width: 100%; height: 100%; min-height: 420px;
+                 background: radial-gradient(circle at 50% 40%, #23272e, #0f1114); }
+  .empty { display: grid; place-items: center; color: var(--muted); min-height: 420px; }
+  .jobs { border-top: 1px solid var(--line); padding: 12px 20px; max-height: 260px; overflow: auto; }
+  .job { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 8px 0;
+         border-bottom: 1px solid var(--line); cursor: pointer; }
+  .job:last-child { border-bottom: 0; }
+  .job .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .job .stage { color: var(--muted); font-size: 12px; }
+  .job.error .stage { color: var(--error); }
+  .job.done .status { color: var(--ok); }
+  .bar { grid-column: 1 / -1; height: 3px; background: var(--line); border-radius: 2px; }
+  .bar i { display: block; height: 100%; background: var(--accent); border-radius: 2px;
+           transition: width .4s; }
+  .files { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
+  .files a { color: var(--accent); font-size: 12px; text-decoration: none;
+             border: 1px solid var(--line); padding: 2px 8px; border-radius: 10px; }
+</style>
+</head>
+<body>
+<header><h1>Meshify</h1><span>open-source, realism-first 3D generation</span></header>
+<main>
+  <aside>
+    <form id="form">
+      <label for="prompt">Prompt</label>
+      <textarea id="prompt" name="prompt" placeholder="weathered oak barrel with iron bands"></textarea>
+      <label for="image">or reference image</label>
+      <input id="image" name="image" type="file" accept="image/*">
+      <div class="hint">If both are given, the image wins. Photos on a plain background work best.</div>
+
+      <div class="row">
+        <div><label for="asset_name">Asset name</label>
+          <input id="asset_name" name="asset_name" value="asset"></div>
+        <div><label for="backend">Model</label><select id="backend" name="backend"></select></div>
+      </div>
+
+      <label class="check"><input type="checkbox" id="realism" checked> Realism pass (photoreal + PBR)</label>
+      <label for="delight_strength">Remove baked lighting: <b id="dlv">0.6</b></label>
+      <input id="delight_strength" name="delight_strength" type="range" min="0" max="1" step="0.05" value="0.6">
+
+      <div class="row">
+        <div><label for="texture_size">Texture</label>
+          <select id="texture_size" name="texture_size">
+            <option>1024</option><option selected>2048</option><option>4096</option></select></div>
+        <div><label for="target_faces">Face budget</label>
+          <select id="target_faces" name="target_faces">
+            <option value="10000">10k (props)</option><option value="50000" selected>50k</option>
+            <option value="200000">200k</option><option value="0">Full (Nanite)</option></select></div>
+      </div>
+      <div class="row">
+        <div><label for="real_world_height_m">Height (m)</label>
+          <input id="real_world_height_m" name="real_world_height_m" type="number" step="0.01" min="0" placeholder="auto"></div>
+        <div><label for="seed">Seed</label><input id="seed" name="seed" type="number" value="42"></div>
+      </div>
+      <button id="go" type="submit">Generate</button>
+    </form>
+  </aside>
+  <section>
+    <div id="stage"><div class="empty">Your asset will show up here.</div></div>
+    <div class="jobs" id="jobs"></div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let shownJob = null;
+
+$("delight_strength").oninput = (e) => $("dlv").textContent = e.target.value;
+
+fetch("/api/backends").then(r => r.json()).then(list => {
+  for (const b of list) {
+    const o = document.createElement("option");
+    o.value = b.name;
+    o.textContent = b.name + (b.available ? "" : " (not installed)") + (b.commercial_ok ? "" : " ⚠ license");
+    o.disabled = !b.available;
+    $("backend").append(o);
+  }
+  const firstReady = list.find(b => b.available && b.name !== "dummy") || list.find(b => b.available);
+  if (firstReady) $("backend").value = firstReady.name;
+});
+
+$("form").onsubmit = async (e) => {
+  e.preventDefault();
+  const fd = new FormData($("form"));
+  fd.set("realism", $("realism").checked);
+  if (!fd.get("real_world_height_m")) fd.set("real_world_height_m", "0");
+  if (!$("image").files.length) fd.delete("image");
+  $("go").disabled = true;
+  try {
+    const r = await fetch("/api/jobs", { method: "POST", body: fd });
+    if (!r.ok) { alert((await r.json()).detail || "Request failed"); return; }
+    const job = await r.json();
+    shownJob = job.id;
+    refresh();
+  } finally { $("go").disabled = false; }
+};
+
+function show(job) {
+  shownJob = job.id;
+  if (job.status !== "done") return;
+  const src = `/api/jobs/${job.id}/files/${job.files.glb}`;
+  const mv = $("stage").querySelector("model-viewer");
+  if (mv && mv.getAttribute("src") === src) return;
+  $("stage").innerHTML = `<model-viewer src="${src}" camera-controls auto-rotate
+    shadow-intensity="1" exposure="1" environment-image="neutral" tone-mapping="aces"></model-viewer>`;
+}
+
+function esc(s) { return String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+async function refresh() {
+  const jobs = await (await fetch("/api/jobs")).json();
+  $("jobs").innerHTML = jobs.map(j => {
+    const files = j.files ? Object.entries(j.files).map(([k, f]) =>
+      `<a href="/api/jobs/${j.id}/files/${f}" download onclick="event.stopPropagation()">${esc(k)}</a>`).join("") : "";
+    const stats = j.stats ? ` · ${j.stats.faces.toLocaleString()} faces · ${j.stats.size_m.y} m tall · ${j.stats.seconds}s` : "";
+    return `<div class="job ${j.status}" data-id="${j.id}">
+      <div class="name">${esc(j.request.asset_name)} — ${esc(j.request.prompt || "image")}</div>
+      <div class="status">${j.status}</div>
+      <div class="stage">${esc(j.status === "error" ? j.error : j.stage)}${stats}</div><div></div>
+      ${j.status === "running" || j.status === "queued" ? `<div class="bar"><i style="width:${j.progress * 100}%"></i></div>` : ""}
+      ${files ? `<div class="files">${files}</div>` : ""}
+    </div>`;
+  }).join("");
+  for (const el of $("jobs").querySelectorAll(".job"))
+    el.onclick = () => show(jobs.find(j => j.id === el.dataset.id));
+  const current = jobs.find(j => j.id === shownJob);
+  if (current) show(current);
+}
+setInterval(refresh, 1500);
+refresh();
+</script>
+</body>
+</html>
