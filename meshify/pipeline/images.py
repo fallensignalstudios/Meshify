@@ -9,7 +9,10 @@ and carry less baked-in lighting into the texture.
 from __future__ import annotations
 
 import importlib.util
+import logging
+import math
 import os
+import re
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -23,6 +26,8 @@ if TYPE_CHECKING:
 # FLUX.1-schnell (Apache-2.0) is the best open photoreal model, but its 12B
 # transformer doesn't fit in under ~16 GB. On smaller cards we default to
 # RealVisXL (SDXL-based, CreativeML OpenRAIL++-M), which is very photoreal and fast.
+log = logging.getLogger(__name__)
+
 T2I_MODEL_FULL = "black-forest-labs/FLUX.1-schnell"
 T2I_MODEL_LOW_VRAM = "SG161222/RealVisXL_V5.0"
 
@@ -76,6 +81,16 @@ def build_prompt(prompt: str, realism: bool, style: "ResolvedStyle | None" = Non
     return f"{prompt}, {REALISM_SUFFIX}"
 
 
+CLIP_TOKEN_LIMIT = 75  # 77 minus start/end tokens
+
+
+def approx_clip_tokens(text: str) -> int:
+    """Conservative CLIP token estimate (never under-counted the real BPE
+    tokenizer on any Sovereign Call prompt). Used to warn before SDXL truncates."""
+    words = re.findall(r"[A-Za-z]+|\d|[^\sA-Za-z\d]", text)
+    return sum(max(1, math.ceil(len(w) / 7)) if w[0].isalpha() else 1 for w in words)
+
+
 def build_prompt_pair(prompt: str, realism: bool, style: "ResolvedStyle") -> tuple[str, str]:
     """Split a styled prompt across SDXL's two text encoders (77 tokens each).
 
@@ -89,16 +104,32 @@ def build_prompt_pair(prompt: str, realism: bool, style: "ResolvedStyle") -> tup
     return subject, ", ".join(p for p in look if p)
 
 
+def _merge_terms(*chunks: str | None, exclude: str = "") -> str:
+    terms: list[str] = []
+    for chunk in chunks:
+        for term in (chunk or "").split(","):
+            term = term.strip()
+            if term and term not in terms and term.lower() not in exclude:
+                terms.append(term)
+    return ", ".join(terms)
+
+
 def build_negative(style: "ResolvedStyle | None" = None) -> str:
     # Never negate something the style asks for (e.g. "stylized" in "stylized realism").
     wanted = (style.render or "").lower() if style else ""
-    terms: list[str] = []
-    for chunk in [style.negative if style else None, NEGATIVE_PROMPT]:
-        for term in (chunk or "").split(","):
-            term = term.strip()
-            if term and term not in terms and term.lower() not in wanted:
-                terms.append(term)
-    return ", ".join(terms)
+    return _merge_terms(style.negative if style else None, NEGATIVE_PROMPT, exclude=wanted)
+
+
+def build_negative_pair(style: "ResolvedStyle") -> tuple[str, str]:
+    """Split negatives across SDXL's encoders like the positive prompt: what this
+    faction/asset type is NOT on encoder 1; pack-wide, quality and framing
+    negatives on encoder 2. Together they're too long for one 77-token encoder."""
+    wanted = (style.render or "").lower()
+    first = _merge_terms(style.identity_negative, exclude=wanted)
+    taken = {t.strip() for t in first.split(",")}
+    rest = [t for t in f"{style.pack_negative},{NEGATIVE_PROMPT}".split(",")
+            if t.strip() not in taken]
+    return first, _merge_terms(*rest, exclude=wanted)
 
 
 _t2i_pipe = None
@@ -141,7 +172,15 @@ def text_to_image(prompt: str, seed: int, realism: bool,
         # FLUX schnell is distilled: 4 steps, no CFG, no negative prompt.
         kwargs.update(num_inference_steps=4, guidance_scale=0.0)
     else:
-        kwargs.update(num_inference_steps=30, guidance_scale=5.0, negative_prompt=build_negative(style))
+        kwargs.update(num_inference_steps=30, guidance_scale=5.0)
+        if "prompt_2" in kwargs:
+            kwargs["negative_prompt"], kwargs["negative_prompt_2"] = build_negative_pair(style)
+        for key in ("prompt", "prompt_2", "negative_prompt", "negative_prompt_2"):
+            if key in kwargs and approx_clip_tokens(kwargs[key]) > CLIP_TOKEN_LIMIT:
+                log.warning("%s may exceed SDXL's 77-token limit and get cut off; "
+                            "shorten the prompt or the style pack text: %s", key, kwargs[key])
+        else:
+            kwargs["negative_prompt"] = build_negative(style)
     return _t2i_pipe(**kwargs).images[0]
 
 

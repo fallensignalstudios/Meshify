@@ -34,7 +34,7 @@ class MaterialStyle:
 class ResolvedStyle:
     prompt_parts: list[str]  # what it is: faction look
     look_parts: list[str]  # how worn it is: condition
-    negative: str
+    negative: str  # everything this style avoids (pack + asset type + faction)
     render: str | None
     material: MaterialStyle
     tris: int | None = None
@@ -43,6 +43,8 @@ class ResolvedStyle:
     size_axis: str = "height"
     pivot: str = "bottom_center"
     grid_m: float | None = None
+    identity_negative: str = ""  # asset type + faction only (SDXL encoder 1)
+    pack_negative: str = ""  # pack-wide (no text, no cartoon...) (SDXL encoder 2)
     framing: str | None = None  # asset-type template, "{subject}" = the user's prompt
     aspect: str = "square"  # text-to-image frame: square, wide or tall
 
@@ -128,8 +130,12 @@ def resolve(pack: str | None, faction: str | None, category: str | None,
         return data[section][key]
 
     fac, cat, cond = pick("factions", faction), pick("categories", category), pick("conditions", condition)
+    # A faction can speak differently per asset type (e.g. Dominion weapons).
+    override = fac.get("overrides", {}).get(category, {}) if category else {}
+    faction_prompt = override.get("prompt", fac.get("prompt"))
     info = data.get("pack", {})
-    negative = ", ".join(n for n in [info.get("negative"), fac.get("negative")] if n)
+    negative = ", ".join(n for n in [info.get("negative"), cat.get("negative"),
+                                     fac.get("negative"), override.get("negative")] if n)
 
     material = MaterialStyle(
         metals=[_hex(c) for c in fac.get("metals", [])],
@@ -139,9 +145,12 @@ def resolve(pack: str | None, faction: str | None, category: str | None,
     )
     return ResolvedStyle(
         # Order matters for 77-token CLIP models: faction look first, then framing.
-        prompt_parts=[fac["prompt"]] if fac.get("prompt") else [],
+        prompt_parts=[faction_prompt] if faction_prompt else [],
         look_parts=[cond["prompt"]] if cond.get("prompt") else [],
         negative=negative,
+        identity_negative=", ".join(n for n in [cat.get("negative"), fac.get("negative"),
+                                                override.get("negative")] if n),
+        pack_negative=info.get("negative", ""),
         render=info.get("render"),
         material=material,
         tris=cat.get("tris"),

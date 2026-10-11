@@ -14,17 +14,27 @@
 name = "Sovereign Call"
 id = "sovereign_call"
 render = "AAA game asset, stylized realism, grounded cinematic sci-fi, centuries of history"
-negative = "text, letters, writing, logo, watermark, gibberish symbols, cartoon, toy, plastic, neon overload"
+negative = "text, letters, writing, logo, gibberish symbols, cartoon, toy"
 
 # ---------------------------------------------------------------- factions
 
 [factions.dominion]
 label = "Dominion"
 prompt = "Dominion imperial sci-fi, Roman-Byzantine design, burnished bronze, blackened steel, oxblood red accents, engraved insignia, recessed amber energy channels"
-negative = "blue glow, cyan, white plastic"
+negative = "blue glow, white plastic"
 metals = ["#8c6239", "#b08d57", "#2b2b2e", "#4a4a52", "#c0c0c8"]  # bronze x2, blackened steel, dark chrome, ceremonial silver
 emissive = "#ffaa33"  # warm amber
 roughness_bias = -0.05
+
+# Faction x asset-type overrides replace the faction prompt for that asset type.
+# Weapons need their own language: generic faction words lose to "rifle".
+[factions.dominion.overrides.weapon]
+prompt = "Dominion imperial state-issued service weapon, monolithic armored chassis, angular sculpted plating, integrated sight, blackened steel, burnished bronze plates, oxblood enamel panels, recessed amber energy channels, heraldic vents, engraved crest"
+negative = "neon, cyberpunk, fantasy filigree, gold plated"
+
+[factions.dominion.overrides.hero_weapon]
+prompt = "Dominion imperial officer weapon, monolithic armored chassis, crest-like sculpted plating, blackened steel, burnished bronze trim, oxblood enamel, contained amber energy core, heraldic vents, engraved insignia housing"
+negative = "neon, cyberpunk, fantasy filigree, gold plated"
 
 [factions.reformation]
 label = "Reformation"
@@ -34,6 +44,10 @@ metals = ["#3a3d42", "#5a5f66", "#2c3440"]  # graphite, gunmetal, navy metal
 emissive = "#9fe6ff"  # icy cyan
 roughness_bias = -0.1
 
+[factions.reformation.overrides.weapon]
+prompt = "Reformation precision weapon, compact modular surgical design, clean machined graphite and gunmetal housings, muted navy panels, integrated sensor optic, pale cyan indicator lights"
+negative = "bronze, ornate, engraving, rust, bulky"
+
 [factions.ancient]
 label = "Ancient Sovereign"
 prompt = "ancient Sovereign technology, elegant sacred geometry, ivory white, pale gold inlays, brushed platinum, sweeping ribs, restrained white-gold energy"
@@ -41,6 +55,10 @@ negative = "rust, grime, red, purple, cheap"
 metals = ["#d4b97a", "#e5e4e2", "#a8a9ad"]  # pale gold, platinum, ancient silver
 emissive = "#fff1c9"  # white-gold
 roughness_bias = -0.1
+
+[factions.ancient.overrides.weapon]
+prompt = "ancient Sovereign weapon, strangely elegant flowing geometry, ivory white body, pale gold inlays, brushed platinum, white-gold energy lines, unlike any modern gun"
+negative = "rust, grime, tactical rails, modern gun parts"
 
 [factions.aurelion]
 label = "Aurelion Enforcer"
@@ -57,6 +75,10 @@ negative = "clean, bright, gold, ivory, cute"
 metals = []  # corruption is organic, not metal
 emissive = "#9b4dff"  # bruised violet
 roughness_bias = 0.05
+
+[factions.eclipse.overrides.weapon]
+prompt = "Eclipse-corrupted weapon, original military form consumed from within by black organic growth, carbonized flesh, obsidian fractures, tendrils through the seams, violet glow in cracks"
+negative = "clean, bright, gold, ivory"
 
 # -------------------------------------------------------------- asset types
 # tris/texture follow the brief's "Suggested Starting Mesh Budgets".
@@ -120,7 +142,8 @@ pivot = "bottom_center"
 
 [categories.weapon]
 label = "Weapon"
-prompt = "full-length side profile of an entire {subject}, whole weapon from end to end, strong silhouette"
+prompt = "full-length side profile of a complete fictional sci-fi {subject}, whole weapon end to end"
+negative = "AK-47, AR-15, real-world firearm, wood furniture, wooden grip, picatinny rails, civilian tactical, curved banana magazine, scavenged, improvised"
 aspect = "wide"
 tris = 20000
 texture = 2048
@@ -130,7 +153,8 @@ pivot = "center"
 
 [categories.hero_weapon]
 label = "Hero weapon"
-prompt = "full-length side profile of an entire legendary {subject}, whole weapon from end to end, iconic silhouette"
+prompt = "full-length side profile of a complete legendary sci-fi {subject}, whole weapon end to end"
+negative = "AK-47, AR-15, real-world firearm, wood furniture, wooden grip, picatinny rails, civilian tactical, curved banana magazine, scavenged, improvised"
 aspect = "wide"
 tris = 40000
 texture = 4096
@@ -162,25 +186,25 @@ pivot = "bottom_center"
 # roughness_offset / ao_strength / wear tune the PBR pass.
 
 [conditions.pristine]
-label = "Pristine / ceremonial"
+label = "Pristine / ceremonial (officer)"
 prompt = "immaculate, perfectly maintained, polished surfaces"
 roughness_offset = -0.15
 ao_strength = 0.6
 
 [conditions.maintained]
-label = "Maintained / in service"
+label = "Maintained / standard issue"
 prompt = "well maintained, light use marks"
 roughness_offset = 0.0
 ao_strength = 1.0
 
 [conditions.frontier]
-label = "Frontier / weathered"
-prompt = "frontier weathering, dust, repair welds, scuffed edges, exposed mechanical connections"
+label = "Frontier / campaign-worn"
+prompt = "campaign-worn but well maintained, scuffed edges, light dust, field repairs"
 roughness_offset = 0.12
 ao_strength = 1.3
 
 [conditions.derelict]
 label = "Derelict / damaged"
-prompt = "derelict, battle damaged, torn open, exposed wiring, heavy grime"
+prompt = "derelict, battle damaged, torn open, exposed wiring, repair welds, grime"
 roughness_offset = 0.22
 ao_strength = 1.6

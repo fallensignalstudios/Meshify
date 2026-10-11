@@ -74,6 +74,36 @@ Keep `prompt` short. On 12 GB cards the text-to-image model (SDXL) reads about
 75 tokens per encoder. Meshify sends subject + faction + asset type to one
 encoder and condition + framing to the other, but it's still worth staying tight.
 
+### Per-asset-type faction language (overrides)
+
+Generic faction words lose to strong nouns: "Dominion... assault rifle" still
+draws a real-world AK, because that's what "assault rifle" means in photos. So
+a faction can describe itself differently per asset type:
+
+```toml
+[factions.dominion.overrides.weapon]
+prompt = "Dominion imperial state-issued service weapon, monolithic armored chassis, ..."
+negative = "neon, cyberpunk, fantasy filigree, gold plated"
+```
+
+The override's `prompt` replaces the faction prompt for that asset type, and
+its `negative` is added. Weapon asset types also carry their own negatives
+(`AK-47, AR-15, wood furniture, picatinny rails...`) for every faction.
+
+### Token budget
+
+SDXL reads 75 tokens per encoder. Meshify splits both the prompt and the
+negative across its two encoders:
+
+| | Encoder 1 | Encoder 2 |
+|---|---|---|
+| Prompt | framing + your subject + faction | condition + render style + studio framing |
+| Negative | asset type + faction "is not" terms | pack-wide, quality and framing terms |
+
+A test (`test_every_styled_prompt_fits_sdxl_token_limits`) checks every
+faction × type × condition against the limit, so run `pytest` after editing.
+Meshify also logs a warning at generation time if a prompt half may be cut off.
+
 Changes are picked up on the next `meshify serve` / `meshify generate`.
 
 ## Your own packs

@@ -52,9 +52,9 @@ def test_styled_prompt_keeps_faction_and_no_text_negative():
     style = resolve(None, "reformation", "weapon", "frontier")
     subject, look = images.build_prompt_pair("sidearm", True, style)
     # Framing comes first so SDXL shows the whole weapon, not a close-up.
-    assert subject.startswith("full-length side profile of an entire sidearm")
+    assert subject.startswith("full-length side profile of a complete fictional sci-fi sidearm")
     assert "Reformation" in subject
-    assert "frontier weathering" in look and "grey background" in look
+    assert "campaign-worn" in look and "grey background" in look
     negative = images.build_negative(style)
     assert "text" in negative and "gold" in negative
     assert "stylized" not in negative.split(", ")  # the brief asks for stylized realism
@@ -165,3 +165,39 @@ def test_cropped_reference_is_retried_with_next_seed(tmp_path, monkeypatch):
     result = generate(req, output_root=tmp_path)
     assert seeds == [7, 8]
     assert result.stats["reference_attempts"] == 2
+
+
+def test_dominion_weapons_use_their_own_language_and_avoid_real_guns():
+    weapon = resolve(None, "dominion", "weapon", None)
+    text = weapon.apply_to_prompt("heavy assault rifle")
+    for word in ["monolithic armored chassis", "burnished bronze", "oxblood", "amber", "heraldic"]:
+        assert word in text
+    assert "AK-47" in weapon.negative and "wood furniture" in weapon.negative
+    # The override only applies to weapons; Dominion architecture keeps the base look.
+    arch = resolve(None, "dominion", "modular_architecture", None).apply_to_prompt("doorway")
+    assert "Roman-Byzantine" in arch and "service weapon" not in arch
+
+
+def test_frontier_is_campaign_worn_not_junkyard():
+    frontier = resolve(None, None, None, "frontier").look_parts[0]
+    assert "well maintained" in frontier and "repair welds" not in frontier
+    assert "repair welds" in resolve(None, None, None, "derelict").look_parts[0]
+
+
+def test_every_styled_prompt_fits_sdxl_token_limits():
+    pack = next(p for p in list_packs() if p["id"] == "sovereign_call")
+    for faction in pack["factions"]:
+        for category in pack["categories"]:
+            for condition in pack["conditions"]:
+                style = resolve("sovereign_call", faction, category, condition)
+                halves = [*images.build_prompt_pair("heavy assault rifle", True, style),
+                          *images.build_negative_pair(style)]
+                for half in halves:
+                    assert images.approx_clip_tokens(half) <= images.CLIP_TOKEN_LIMIT, \
+                        (faction, category, condition, half)
+
+
+def test_negative_split_keeps_framing_negatives_on_second_encoder():
+    first, second = images.build_negative_pair(resolve(None, "dominion", "weapon", "frontier"))
+    assert "AK-47" in first and "close-up" in second and "text" in second
+    assert not set(first.split(", ")) & set(second.split(", "))
