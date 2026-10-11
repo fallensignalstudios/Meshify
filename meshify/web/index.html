@@ -37,6 +37,10 @@
            cursor: pointer; }
   button:disabled { opacity: .5; cursor: default; }
   .hint { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .warnbox { margin-top: 10px; padding: 8px 10px; border: 1px solid var(--error);
+             border-radius: 6px; color: var(--text); font-size: 12px; background: #2a1514; }
+  .warnbox b { color: var(--error); }
+  .warnbox code { background: var(--bg); padding: 0 4px; border-radius: 3px; }
   section { display: grid; grid-template-rows: 1fr auto; min-width: 0; }
   model-viewer { width: 100%; height: 100%; min-height: 420px;
                  background: radial-gradient(circle at 50% 40%, #23272e, #0f1114); }
@@ -73,6 +77,12 @@
         <div><label for="asset_name">Asset name</label>
           <input id="asset_name" name="asset_name" value="asset"></div>
         <div><label for="backend">Model</label><select id="backend" name="backend"></select></div>
+      </div>
+      <div id="dummywarn" class="warnbox" hidden>
+        <b>Test placeholder selected.</b> <code>dummy</code> wraps your image around an egg
+        shape to test the pipeline; it isn't an AI model.
+        <span id="nomodels" hidden>No real 3D model is installed yet: see
+        <code>docs/INSTALL.md</code> and run <code>meshify backends</code> to check.</span>
       </div>
 
       <label class="check"><input type="checkbox" id="realism" checked> Realism pass (photoreal + PBR)</label>
@@ -117,6 +127,10 @@ fetch("/api/backends").then(r => r.json()).then(list => {
   }
   const firstReady = list.find(b => b.available && b.name !== "dummy") || list.find(b => b.available);
   if (firstReady) $("backend").value = firstReady.name;
+  $("nomodels").hidden = list.some(b => b.available && b.name !== "dummy");
+  const sync = () => $("dummywarn").hidden = $("backend").value !== "dummy";
+  $("backend").onchange = sync;
+  sync();
 });
 
 fetch("/api/system").then(r => r.json()).then(s => {
