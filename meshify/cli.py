@@ -40,7 +40,19 @@ def _cmd_serve(args: argparse.Namespace) -> int:
 
 def _cmd_backends(_: argparse.Namespace) -> int:
     from .backends import list_backends
+    from .gpu import blackwell_torch_problem, gpu_info, low_vram
 
+    info = gpu_info()
+    if info:
+        mode = "low-VRAM mode" if low_vram() else "full mode"
+        print(f"GPU: {info['name']} ({info['vram_gb']} GB, compute {info['compute_capability']}, "
+              f"torch {info['torch']} / CUDA {info['cuda']}) - {mode}")
+        problem = blackwell_torch_problem()
+        if problem:
+            print(f"WARNING: {problem}")
+    else:
+        print("GPU: none detected (only the dummy backend will work)")
+    print()
     for b in list_backends():
         status = "ready" if b["available"] else b["reason"]
         commercial = "commercial OK" if b["commercial_ok"] else "check license"

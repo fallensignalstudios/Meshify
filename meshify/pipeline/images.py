@@ -14,7 +14,18 @@ import os
 import numpy as np
 from PIL import Image
 
-T2I_MODEL = os.environ.get("MESHIFY_T2I_MODEL", "black-forest-labs/FLUX.1-schnell")
+from ..gpu import free_cuda, low_vram
+
+# FLUX.1-schnell (Apache-2.0) is the best open photoreal model, but its 12B
+# transformer doesn't fit in under ~16 GB. On smaller cards we default to
+# RealVisXL (SDXL-based, CreativeML OpenRAIL++-M), which is very photoreal and fast.
+T2I_MODEL_FULL = "black-forest-labs/FLUX.1-schnell"
+T2I_MODEL_LOW_VRAM = "SG161222/RealVisXL_V5.0"
+
+
+def t2i_model() -> str:
+    return os.environ.get("MESHIFY_T2I_MODEL") or (
+        T2I_MODEL_LOW_VRAM if low_vram() else T2I_MODEL_FULL)
 
 REALISM_SUFFIX = (
     "photorealistic studio product photograph, single object, whole object in frame, "
@@ -45,11 +56,12 @@ def build_prompt(prompt: str, realism: bool) -> str:
 
 
 _t2i_pipe = None
+_t2i_name: str | None = None
 
 
 def text_to_image(prompt: str, seed: int, realism: bool) -> Image.Image:
     """Generate a reference image. Needs `pip install meshify[text]` and a GPU."""
-    global _t2i_pipe
+    global _t2i_pipe, _t2i_name
     if importlib.util.find_spec("diffusers") is None:
         raise RuntimeError(
             "Text prompts need the text-to-image extra: pip install -e .[text] "
@@ -58,20 +70,37 @@ def text_to_image(prompt: str, seed: int, realism: bool) -> Image.Image:
     import torch
     from diffusers import AutoPipelineForText2Image
 
-    if _t2i_pipe is None:
-        _t2i_pipe = AutoPipelineForText2Image.from_pretrained(T2I_MODEL, torch_dtype=torch.bfloat16)
-        # Offloading keeps FLUX usable next to a 3D model on a single 24GB card.
-        _t2i_pipe.enable_model_cpu_offload()
+    model = t2i_model()
+    if _t2i_pipe is None or _t2i_name != model:
+        release_text_to_image()
+        is_flux = "flux" in model.lower()
+        dtype = torch.bfloat16 if is_flux else torch.float16
+        _t2i_pipe = AutoPipelineForText2Image.from_pretrained(model, torch_dtype=dtype)
+        if is_flux and low_vram():
+            # Streams weights layer by layer: slow, but FLUX runs on 12 GB.
+            _t2i_pipe.enable_sequential_cpu_offload()
+        else:
+            _t2i_pipe.enable_model_cpu_offload()
+        _t2i_name = model
 
     full_prompt = build_prompt(prompt, realism)
     kwargs = {"prompt": full_prompt, "generator": torch.Generator("cpu").manual_seed(seed),
               "width": 1024, "height": 1024}
-    if "schnell" in T2I_MODEL.lower():
+    if "schnell" in model.lower():
         # FLUX schnell is distilled: 4 steps, no CFG, no negative prompt.
         kwargs.update(num_inference_steps=4, guidance_scale=0.0)
     else:
         kwargs.update(num_inference_steps=30, guidance_scale=5.0, negative_prompt=NEGATIVE_PROMPT)
     return _t2i_pipe(**kwargs).images[0]
+
+
+def release_text_to_image() -> None:
+    """Unload the text-to-image model so the 3D model gets the whole GPU."""
+    global _t2i_pipe, _t2i_name
+    if _t2i_pipe is not None:
+        _t2i_pipe = None
+        _t2i_name = None
+        free_cuda()
 
 
 def remove_background(image: Image.Image) -> Image.Image:

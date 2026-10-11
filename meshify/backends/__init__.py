@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 
+from ..gpu import free_cuda
 from .base import BackendInfo, ImageTo3DBackend
 from .dummy import DummyBackend
 from .hunyuan3d import Hunyuan3DBackend
@@ -28,7 +29,9 @@ def get_backend(name: str) -> ImageTo3DBackend:
     with _lock:
         if name not in _instances:
             # Only keep one heavy model resident at a time.
-            _instances.clear()
+            if _instances:
+                _instances.clear()
+                free_cuda()
             _instances[name] = BACKENDS[name]()
         backend = _instances[name]
         backend.ensure_loaded()

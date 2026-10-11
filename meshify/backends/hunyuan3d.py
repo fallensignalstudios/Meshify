@@ -16,7 +16,21 @@ from PIL import Image
 
 from .base import BackendInfo, ImageTo3DBackend
 
-MODEL_ID = os.environ.get("MESHIFY_HUNYUAN_MODEL", "tencent/Hunyuan3D-2")
+from ..gpu import low_vram
+
+# Texture painting always uses the full Hunyuan3D-2 paint model.
+PAINT_MODEL_ID = "tencent/Hunyuan3D-2"
+# Shape model: full (~6 GB) normally; the 0.6B "mini" model on low-VRAM cards
+# so shape + offloaded painting fit in 12 GB.
+SHAPE_MODELS = {
+    "full": ("tencent/Hunyuan3D-2", "hunyuan3d-dit-v2-0"),
+    "mini": ("tencent/Hunyuan3D-2mini", "hunyuan3d-dit-v2-mini"),
+}
+
+
+def _shape_model() -> tuple[str, str]:
+    choice = os.environ.get("MESHIFY_HUNYUAN_SHAPE") or ("mini" if low_vram() else "full")
+    return SHAPE_MODELS.get(choice, SHAPE_MODELS["full"])
 
 
 class Hunyuan3DBackend(ImageTo3DBackend):
@@ -37,8 +51,13 @@ class Hunyuan3DBackend(ImageTo3DBackend):
         from hy3dgen.shapegen import Hunyuan3DDiTFlowMatchingPipeline
         from hy3dgen.texgen import Hunyuan3DPaintPipeline
 
-        self._shape = Hunyuan3DDiTFlowMatchingPipeline.from_pretrained(MODEL_ID)
-        self._paint = Hunyuan3DPaintPipeline.from_pretrained(MODEL_ID)
+        repo, subfolder = _shape_model()
+        self._shape = Hunyuan3DDiTFlowMatchingPipeline.from_pretrained(
+            repo, subfolder=subfolder, use_safetensors=True)
+        self._paint = Hunyuan3DPaintPipeline.from_pretrained(PAINT_MODEL_ID)
+        if low_vram():
+            # Keeps only the active paint sub-model on the GPU.
+            self._paint.enable_model_cpu_offload()
 
     def generate(self, image: Image.Image, seed: int, texture_size: int,
                  target_faces: int | None) -> trimesh.Trimesh:

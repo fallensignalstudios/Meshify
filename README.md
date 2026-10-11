@@ -41,16 +41,18 @@ as the field moves.
 | `hunyuan3d` (Tencent Hunyuan3D 2) | Tencent community license | ⚠️ restricted | Excellent detail. Excludes EU/UK/South Korea, limits large-scale use. |
 | `dummy` | MIT | ✅ | CPU test placeholder (no GPU needed). |
 
-Text prompts use **FLUX.1-schnell** (Apache-2.0) by default. Any diffusers
-text-to-image model can be swapped in.
+Text prompts use **FLUX.1-schnell** (Apache-2.0) by default, or **RealVisXL**
+(SDXL-based, OpenRAIL++) on 12 GB cards. Any diffusers text-to-image model
+can be swapped in.
 
 Meshify's own code is MIT. The assets you generate are yours, subject to the
 license of the backend that made them.
 
 ## Quick start
 
-You need an NVIDIA GPU with 16 GB+ VRAM. See **[docs/INSTALL.md](docs/INSTALL.md)**
-for the full setup, including Windows via WSL2.
+You need an NVIDIA GPU: 16 GB+ for everything, or 12 GB in the automatic
+low-VRAM mode. See **[docs/INSTALL.md](docs/INSTALL.md)** for the full setup,
+including Windows via WSL2 and RTX 50-series cards.
 
 ```bash
 meshify backends                     # what's installed, with licenses

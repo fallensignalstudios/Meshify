@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from .backends import list_backends
+from .gpu import blackwell_torch_problem, gpu_info, low_vram
 from .config import DEFAULT_BACKEND, OUTPUT_ROOT, GenerationRequest
 from .pipeline.run import generate
 
@@ -64,6 +65,11 @@ def index() -> str:
 @app.get("/api/backends")
 def backends() -> list[dict]:
     return list_backends()
+
+
+@app.get("/api/system")
+def system() -> dict:
+    return {"gpu": gpu_info(), "low_vram": low_vram(), "warning": blackwell_torch_problem()}
 
 
 @app.post("/api/jobs")

@@ -14,6 +14,7 @@ from PIL import Image
 
 from ..backends import get_backend
 from ..config import OUTPUT_ROOT, GenerationRequest
+from ..gpu import low_vram
 from . import images, materials
 from .mesh import prepare_mesh
 
@@ -54,6 +55,8 @@ def generate(req: GenerationRequest, progress: ProgressFn | None = None,
     else:
         progress("Generating photoreal reference image", 0.05)
         reference = images.text_to_image(req.prompt, req.seed, req.realism)
+        if low_vram():
+            images.release_text_to_image()
     reference.save(out / "reference.png")
     result.files["reference"] = "reference.png"
 
