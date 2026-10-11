@@ -182,3 +182,25 @@ def test_real_reformation_white_armour_is_not_mistaken_for_glow():
     _, alpha, maps = _maps_on("reformation/armor/trooper.png", "reformation")
     glow = np.asarray(maps.emissive_mask) / 255 > 0.5 if maps.emissive_mask else np.zeros(1)
     assert glow[alpha].mean() < 0.05
+
+
+def test_real_ancient_art_ivory_is_not_metal_or_glow():
+    import numpy as np
+
+    rgb, alpha, maps = _maps_on("ancient/weapon/sovereign_rifle.png", "ancient")
+    metal = np.asarray(maps.metallic) / 255
+    r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+    ivory = (r > 170) & (abs(r - g) < 20) & (abs(g - b) < 30) & alpha
+    gold = (r > g * 1.08) & (g > b * 1.15) & (r > 120) & alpha
+    assert metal[gold].mean() > metal[ivory].mean() + 0.2
+    glow = np.asarray(maps.emissive_mask) / 255 > 0.5 if maps.emissive_mask else np.zeros(1)
+    assert glow[alpha].mean() < 0.02  # edge highlights on ivory are not lights
+
+
+def test_real_eclipse_art_violet_glows_and_flesh_is_not_metal():
+    import numpy as np
+
+    rgb, alpha, maps = _maps_on("eclipse/weapon/blight_rifle.png", "eclipse")
+    assert maps.emissive_mask is not None  # violet glow despite its low luminance
+    metal = np.asarray(maps.metallic) / 255
+    assert metal[alpha].mean() < 0.5  # organic corruption dominates

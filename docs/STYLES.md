@@ -58,8 +58,12 @@ gives a partial 3D model. Three things guard against that:
   scales ambient occlusion (more grime in the crevices).
 
 The Sovereign Call colours are sampled from the faction style boards and
-reference art, and tests check them on real art (Dominion bronze = metal,
-oxblood = enamel, amber strips glow; Reformation white armour doesn't glow).
+reference art, and tests check them on real art: Dominion bronze is metal,
+oxblood is enamel and the amber strips glow; Reformation and Ancient white or
+ivory armour doesn't glow; Eclipse's violet glows are found (glow brightness
+uses the brightest channel, so vivid violet counts as bright). Non-metal
+swatches also veto glow, which stops edge highlights on pale armour being
+read as light.
 
 These are colour heuristics, so they work best when the generated texture
 actually uses the faction palette. A faction prompt helps a lot with that.

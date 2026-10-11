@@ -148,16 +148,25 @@ def metallic_from_palette(albedo: np.ndarray, metals: list[tuple[int, int, int]]
 
 
 def emissive_from_palette(rgb: np.ndarray, colors: list[tuple[int, int, int]],
+                          nonmetals: list[tuple[int, int, int]] | None = None,
                           max_coverage: float = 0.2) -> np.ndarray | None:
-    """Find glowing channels: near one of the faction's energy colours AND brighter than
-    their surroundings. The local-contrast test stops flat ivory or white panels
-    from being mistaken for white-gold glow."""
+    """Find glowing channels: near one of the faction's energy colours AND brighter
+    than their surroundings. The local-contrast test stops flat ivory or white
+    panels from being mistaken for white-gold glow; `nonmetals` (ivory, pearl,
+    white paint) also veto pixels that are closer to a surface colour than to a
+    glow colour, which catches bright edge highlights on pale armour."""
     if not colors:
         return None
     luma = rgb @ LUMA
     lifted = luma - ndimage.gaussian_filter(luma, 8)
-    near = np.clip(1.0 - (_distance_to(srgb_to_lab(rgb), colors) - 15.0) / 20.0, 0, 1)
-    mask = near * np.clip((lifted - 0.06) / 0.12, 0, 1) * (luma > 0.45)
+    lab = srgb_to_lab(rgb)
+    dist = _distance_to(lab, colors)
+    near = np.clip(1.0 - (dist - 15.0) / 20.0, 0, 1)
+    # Brightest channel, not luminance: a vivid violet glow has low luminance.
+    bright = rgb.max(axis=-1) > 0.6
+    mask = near * np.clip((lifted - 0.04) / 0.12, 0, 1) * bright
+    if nonmetals:
+        mask *= np.clip(0.5 + (_distance_to(lab, nonmetals) - dist) / 8.0, 0, 1)
     mask = ndimage.gaussian_filter(mask.astype(np.float32), 0.8)
     coverage = float((mask > 0.5).mean())
     if coverage < 0.0005:
@@ -186,7 +195,7 @@ def build_pbr_maps(base_color: Image.Image, delight_strength: float,
         rough = rough - 0.15 * metal + style.roughness_bias
         ao = 1.0 - (1.0 - ao) * style.ao_strength
         # Detect glow on the original texture, where emissive pixels are brightest.
-        emissive_mask = emissive_from_palette(rgb, style.emissive)
+        emissive_mask = emissive_from_palette(rgb, style.emissive, style.nonmetals)
     rough = np.clip(rough, 0.05, 1.0)
     ao = np.clip(ao, 0.0, 1.0)
 

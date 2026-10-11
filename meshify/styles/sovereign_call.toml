@@ -58,9 +58,10 @@ negative = "bronze, ornate, engraving, rust, bulky"
 label = "Ancient Sovereign"
 prompt = "ancient Sovereign technology, elegant sacred geometry, ivory white, pale gold inlays, brushed platinum, sweeping ribs, restrained white-gold energy"
 negative = "rust, grime, red, purple, cheap"
-metals = ["#d4b97a", "#e5e4e2", "#a8a9ad"]  # pale gold, platinum, ancient silver
-nonmetals = ["#f2ead8", "#1a1a1c"]  # ivory plating, black stone
-emissive = "#fff1c9"  # white-gold
+# Sampled from the Remnant / Aurelion style board.
+metals = ["#d4b97a", "#b5a183", "#e5e4e2", "#a8a9ad", "#7d7773", "#6b6864"]  # pale gold x2, platinum x2, ancient silver x2
+nonmetals = ["#f2ead8", "#c2b8ad", "#e1ddda", "#bcbcbd", "#d5d4d3", "#333437", "#1a1a1c"]  # ivory stone x3, pearl ceramic x2, black stone x2
+emissive = ["#fff1c9", "#f0d9a0"]  # white-gold, golden glow
 roughness_bias = -0.1
 
 [factions.ancient.overrides.weapon]
@@ -71,16 +72,19 @@ negative = "rust, grime, tactical rails, modern gun parts"
 label = "Aurelion Enforcer"
 prompt = "Aurelion Enforcer, ancient prison guard technology, ivory-white plating, polished steel, gold ornamentation, solemn and imposing"
 negative = "rust, grime, red, purple"
-metals = ["#c9cdd2", "#d4b97a", "#b8862f"]  # polished steel, pale gold, gold
-emissive = "#fff1c9"
+metals = ["#c9cdd2", "#d4b97a", "#b5a183", "#b8862f", "#7d7773"]  # polished steel, pale gold x2, gold, platinum
+nonmetals = ["#f2ead8", "#c2b8ad", "#e1ddda", "#bcbcbd", "#1a1a1c"]  # ivory plating, pearl ceramic, black
+emissive = ["#fff1c9", "#f0d9a0"]
 roughness_bias = -0.15
 
 [factions.eclipse]
 label = "Eclipse"
 prompt = "Eclipse corruption, black organic growth consuming technology, carbonized flesh, fractured obsidian, writhing tendrils, violet glow from cracks"
 negative = "clean, bright, gold, ivory, cute"
-metals = []  # corruption is organic, not metal
-emissive = ["#9b4dff", "#dcc2ff"]  # bruised violet, hot core
+# Sampled from the Eclipse style board: corruption grows over (charred) metal.
+metals = ["#5c504a", "#2f2625", "#8a8080"]  # charred metal x2, corrupted armour silver
+nonmetals = ["#1c191c", "#171619", "#361520", "#b57f9a", "#8a7876", "#cabcb6", "#524849"]  # black flesh, obsidian, bruised tissue x2, corrupted bone x2, infested ceramic
+emissive = ["#9b4dff", "#8f6fbb", "#dcc2ff"]  # bruised violet, void emission, hot core
 roughness_bias = 0.05
 
 [factions.eclipse.overrides.weapon]
