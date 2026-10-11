@@ -1,0 +1,174 @@
+# Sovereign Call: Origins - Meshify style pack
+#
+# Faction, asset type and condition are independent: any combination works
+# (e.g. Dominion + Industrial Prop + Frontier). Edit freely; see docs/STYLES.md.
+#
+# Prompt fragments are kept short on purpose: SDXL-based models (used on 12 GB
+# cards) only read ~75 tokens. Put the most important words first.
+#
+# Colours are sRGB hex. `metals` are swatches that become metallic in the PBR
+# pass when a texture pixel is close to them; `emissive` is the glow colour
+# that gets pulled out into a separate, controllable emissive mask.
+
+[pack]
+name = "Sovereign Call"
+id = "sovereign_call"
+render = "AAA game asset, stylized realism, grounded cinematic sci-fi, centuries of history"
+negative = "text, letters, writing, logo, watermark, gibberish symbols, cartoon, toy, plastic, neon overload"
+
+# ---------------------------------------------------------------- factions
+
+[factions.dominion]
+label = "Dominion"
+prompt = "Dominion imperial sci-fi, Roman-Byzantine design, burnished bronze, blackened steel, oxblood red accents, engraved insignia, recessed amber energy channels"
+negative = "blue glow, cyan, white plastic"
+metals = ["#8c6239", "#b08d57", "#2b2b2e", "#4a4a52", "#c0c0c8"]  # bronze x2, blackened steel, dark chrome, ceremonial silver
+emissive = "#ffaa33"  # warm amber
+roughness_bias = -0.05
+
+[factions.reformation]
+label = "Reformation"
+prompt = "Reformation sci-fi, clinical precision engineering, graphite and gunmetal, muted navy, sterile white panels, compact modular, pale cyan sensor lights"
+negative = "gold, bronze, ornate, engraving, rust"
+metals = ["#3a3d42", "#5a5f66", "#2c3440"]  # graphite, gunmetal, navy metal
+emissive = "#9fe6ff"  # icy cyan
+roughness_bias = -0.1
+
+[factions.ancient]
+label = "Ancient Sovereign"
+prompt = "ancient Sovereign technology, elegant sacred geometry, ivory white, pale gold inlays, brushed platinum, sweeping ribs, restrained white-gold energy"
+negative = "rust, grime, red, purple, cheap"
+metals = ["#d4b97a", "#e5e4e2", "#a8a9ad"]  # pale gold, platinum, ancient silver
+emissive = "#fff1c9"  # white-gold
+roughness_bias = -0.1
+
+[factions.aurelion]
+label = "Aurelion Enforcer"
+prompt = "Aurelion Enforcer, ancient prison guard technology, ivory-white plating, polished steel, gold ornamentation, solemn and imposing"
+negative = "rust, grime, red, purple"
+metals = ["#c9cdd2", "#d4b97a", "#b8862f"]  # polished steel, pale gold, gold
+emissive = "#fff1c9"
+roughness_bias = -0.15
+
+[factions.eclipse]
+label = "Eclipse"
+prompt = "Eclipse corruption, black organic growth consuming technology, carbonized flesh, fractured obsidian, writhing tendrils, violet glow from cracks"
+negative = "clean, bright, gold, ivory, cute"
+metals = []  # corruption is organic, not metal
+emissive = "#9b4dff"  # bruised violet
+roughness_bias = 0.05
+
+# -------------------------------------------------------------- asset types
+# tris/texture follow the brief's "Suggested Starting Mesh Budgets".
+# size_axis: "height" or "longest" (weapons/armour are measured by length).
+# pivot: "bottom_center" (props), "bottom_corner" (modular kits), "center".
+# grid_m: snap the largest footprint dimension to this grid (modular pieces).
+
+[categories.small_prop]
+label = "Small prop"
+prompt = "small hand-held prop, single object"
+tris = 3000
+texture = 1024
+size_m = 0.4
+size_axis = "longest"
+pivot = "bottom_center"
+
+[categories.medium_prop]
+label = "Medium prop"
+prompt = "prop, single object, crate or container scale"
+tris = 10000
+texture = 2048
+size_m = 1.0
+size_axis = "height"
+pivot = "bottom_center"
+
+[categories.industrial_prop]
+label = "Industrial prop"
+prompt = "functional sci-fi machinery, generator or console, mechanical construction"
+tris = 10000
+texture = 2048
+size_m = 1.8
+size_axis = "height"
+pivot = "bottom_center"
+
+[categories.modular_architecture]
+label = "Modular architecture"
+prompt = "modular environment kit piece, straight edges, flat back, tileable architectural module"
+tris = 15000
+texture = 2048
+size_m = 4.0
+size_axis = "height"
+pivot = "bottom_corner"
+grid_m = 1.0
+
+[categories.architecture_hero]
+label = "Architecture hero piece"
+prompt = "monumental architectural centerpiece, grand scale"
+tris = 50000
+texture = 4096
+size_m = 8.0
+size_axis = "height"
+pivot = "bottom_center"
+
+[categories.weapon]
+label = "Weapon"
+prompt = "weapon, side view, full length visible, strong silhouette, functional detail"
+tris = 20000
+texture = 2048
+size_m = 1.0
+size_axis = "longest"
+pivot = "center"
+
+[categories.hero_weapon]
+label = "Hero weapon"
+prompt = "legendary hero weapon, side view, full length visible, iconic silhouette, intricate functional detail"
+tris = 40000
+texture = 4096
+size_m = 1.2
+size_axis = "longest"
+pivot = "center"
+
+[categories.armor]
+label = "Armor piece"
+prompt = "single armor piece, helmet or pauldron or chestplate, separable, no body inside"
+tris = 15000
+texture = 2048
+size_m = 0.45
+size_axis = "longest"
+pivot = "center"
+
+[categories.ship_component]
+label = "Ship component"
+prompt = "modular spaceship component, thruster or hull module or docking machinery"
+tris = 15000
+texture = 2048
+size_m = 3.0
+size_axis = "longest"
+pivot = "bottom_center"
+
+# --------------------------------------------------------------- conditions
+# roughness_offset / ao_strength / wear tune the PBR pass.
+
+[conditions.pristine]
+label = "Pristine / ceremonial"
+prompt = "immaculate, perfectly maintained, polished surfaces"
+roughness_offset = -0.15
+ao_strength = 0.6
+
+[conditions.maintained]
+label = "Maintained / in service"
+prompt = "well maintained, light use marks"
+roughness_offset = 0.0
+ao_strength = 1.0
+
+[conditions.frontier]
+label = "Frontier / weathered"
+prompt = "frontier weathering, dust, repair welds, scuffed edges, exposed mechanical connections"
+roughness_offset = 0.12
+ao_strength = 1.3
+
+[conditions.derelict]
+label = "Derelict / damaged"
+prompt = "derelict, battle damaged, torn open, exposed wiring, heavy grime"
+roughness_offset = 0.22
+ao_strength = 1.6

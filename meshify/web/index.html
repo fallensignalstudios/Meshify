@@ -37,6 +37,8 @@
            cursor: pointer; }
   button:disabled { opacity: .5; cursor: default; }
   .hint { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .section { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line);
+             font-weight: 600; color: var(--accent); }
   .warnbox { margin-top: 10px; padding: 8px 10px; border: 1px solid var(--error);
              border-radius: 6px; color: var(--text); font-size: 12px; background: #2a1514; }
   .warnbox b { color: var(--error); }
@@ -85,6 +87,17 @@
         <code>docs/INSTALL.md</code> and run <code>meshify backends</code> to check.</span>
       </div>
 
+      <div id="stylebox" hidden>
+        <input type="hidden" id="style_pack" name="style_pack">
+        <div class="section" id="packname">Style</div>
+        <div class="row">
+          <div><label for="faction">Faction</label><select id="faction" name="faction"></select></div>
+          <div><label for="condition">Condition</label><select id="condition" name="condition"></select></div>
+        </div>
+        <label for="category">Asset type</label><select id="category" name="category"></select>
+        <div class="hint" id="presethint"></div>
+      </div>
+
       <label class="check"><input type="checkbox" id="realism" checked> Realism pass (photoreal + PBR)</label>
       <label for="delight_strength">Remove baked lighting: <b id="dlv">0.6</b></label>
       <input id="delight_strength" name="delight_strength" type="range" min="0" max="1" step="0.05" value="0.6">
@@ -92,15 +105,18 @@
       <div class="row">
         <div><label for="texture_size">Texture</label>
           <select id="texture_size" name="texture_size">
-            <option>1024</option><option selected>2048</option><option>4096</option></select></div>
-        <div><label for="target_faces">Face budget</label>
+            <option value="0" selected>Preset</option><option>1024</option><option>2048</option>
+            <option>4096</option></select></div>
+        <div><label for="target_faces">Triangle budget</label>
           <select id="target_faces" name="target_faces">
-            <option value="10000">10k (props)</option><option value="50000" selected>50k</option>
+            <option value="" selected>Preset</option><option value="3000">3k</option>
+            <option value="10000">10k</option><option value="20000">20k</option>
+            <option value="40000">40k</option><option value="50000">50k</option>
             <option value="200000">200k</option><option value="0">Full (Nanite)</option></select></div>
       </div>
       <div class="row">
-        <div><label for="real_world_height_m">Height (m)</label>
-          <input id="real_world_height_m" name="real_world_height_m" type="number" step="0.01" min="0" placeholder="auto"></div>
+        <div><label for="real_world_size_m" id="sizelabel">Height (m)</label>
+          <input id="real_world_size_m" name="real_world_size_m" type="number" step="0.01" min="0" placeholder="auto"></div>
         <div><label for="seed">Seed</label><input id="seed" name="seed" type="number" value="42"></div>
       </div>
       <button id="go" type="submit">Generate</button>
@@ -140,11 +156,42 @@ fetch("/api/system").then(r => r.json()).then(s => {
   else el.textContent = "No GPU detected";
 });
 
+let styleCats = {};
+function option(value, label) {
+  const o = document.createElement("option"); o.value = value; o.textContent = label; return o;
+}
+fetch("/api/styles").then(r => r.json()).then(packs => {
+  if (!packs.length) return;
+  const pack = packs[0];  // one pack for now; add a picker if more are installed
+  $("stylebox").hidden = false;
+  $("style_pack").value = pack.id;
+  $("packname").textContent = pack.name;
+  styleCats = pack.categories;
+  for (const [id, sel, items] of [["faction", $("faction"), pack.factions],
+                                  ["condition", $("condition"), pack.conditions]]) {
+    sel.append(option("", "— none —"));
+    for (const [k, label] of Object.entries(items)) sel.append(option(k, label));
+  }
+  $("category").append(option("", "— generic —"));
+  for (const [k, c] of Object.entries(pack.categories)) $("category").append(option(k, c.label));
+  $("category").onchange = presetHint;
+  presetHint();
+});
+function presetHint() {
+  const c = styleCats[$("category").value];
+  const longest = c && c.size_axis === "longest";
+  $("sizelabel").textContent = longest ? "Length (m)" : "Height (m)";
+  $("real_world_size_m").placeholder = c && c.size_m ? `preset ${c.size_m}` : "auto";
+  $("presethint").textContent = c
+    ? `Preset: ${c.tris.toLocaleString()} tris · ${c.texture}px · ${c.size_m} m ${longest ? "long" : "tall"}`
+    : "Pick an asset type to use the Sovereign Call budgets.";
+}
+
 $("form").onsubmit = async (e) => {
   e.preventDefault();
   const fd = new FormData($("form"));
   fd.set("realism", $("realism").checked);
-  if (!fd.get("real_world_height_m")) fd.set("real_world_height_m", "0");
+  if (!fd.get("real_world_size_m")) fd.set("real_world_size_m", "0");
   if (!$("image").files.length) fd.delete("image");
   $("go").disabled = true;
   try {
@@ -173,9 +220,11 @@ async function refresh() {
   $("jobs").innerHTML = jobs.map(j => {
     const files = j.files ? Object.entries(j.files).map(([k, f]) =>
       `<a href="/api/jobs/${j.id}/files/${f}" download onclick="event.stopPropagation()">${esc(k)}</a>`).join("") : "";
-    const stats = j.stats ? ` · ${j.stats.faces.toLocaleString()} faces · ${j.stats.size_m.y} m tall · ${j.stats.seconds}s` : "";
+    const stats = j.stats ? ` · ${j.stats.faces.toLocaleString()} faces · ${j.stats.size_m.x} × ${j.stats.size_m.y} × ${j.stats.size_m.z} m · ${j.stats.seconds}s` : "";
     return `<div class="job ${j.status}" data-id="${j.id}">
-      <div class="name">${esc(j.request.asset_name)} — ${esc(j.request.prompt || "image")}</div>
+      <div class="name">${esc(j.request.asset_name)} — ${esc(j.request.prompt || "image")}${
+        [j.request.faction, j.request.category, j.request.condition].filter(Boolean).length
+          ? ` <span class="stage">· ${esc([j.request.faction, j.request.category, j.request.condition].filter(Boolean).join(" / "))}</span>` : ""}</div>
       <div class="status">${j.status}</div>
       <div class="stage">${esc(j.status === "error" ? j.error : j.stage)}${stats}</div><div></div>
       ${j.status === "running" || j.status === "queued" ? `<div class="bar"><i style="width:${j.progress * 100}%"></i></div>` : ""}

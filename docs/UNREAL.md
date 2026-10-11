@@ -18,6 +18,8 @@ The `textures/` folder follows Unreal naming conventions:
 | `T_<name>_BaseColor.png` | sRGB **on** | Base Color |
 | `T_<name>_Normal_DX.png` | Compression: **Normalmap** | Normal |
 | `T_<name>_ORM.png` | sRGB **off**, Compression: **Masks** | R → Ambient Occlusion, G → Roughness, B → Metallic |
+| `T_<name>_Emissive.png` (if any) | sRGB **on** | Multiply by a scalar `EmissiveIntensity` parameter → Emissive Color |
+| `T_<name>_EmissiveMask.png` (if any) | sRGB **off**, Compression: **Masks** | Mask for tinting or pulsing the glow yourself |
 
 Use `Normal_DX` in Unreal (DirectX, green flipped). `Normal_GL` is for
 Blender, Godot and glTF tools.
@@ -36,7 +38,11 @@ let Unreal auto-generate LODs (Static Mesh Editor → LOD Settings → Number of
 
 - Dial **Remove baked lighting** up (0.7-0.9) if the asset looks "pre-lit"
   under your scene lighting, or down if it loses too much colour variation.
-- Metallic defaults to 0. For metal parts, paint the ORM blue channel or
-  override Metallic in the material instance.
+- Without a faction, metallic defaults to 0. With a faction (see
+  [STYLES.md](STYLES.md)), its metal colours become metallic automatically.
+  You can still paint the ORM blue channel to fix any misses.
+- Emissive maps are only written when glow is found. Keep emissive selective
+  (as the Sovereign Call brief says): drive it from one intensity parameter
+  per faction so Lumen lighting stays consistent.
 - Real-world height matters more than you'd think for realism. A barrel is
   about 0.9 m, a door 2.1 m, a person 1.75 m.

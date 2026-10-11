@@ -13,8 +13,9 @@ from typing import Callable
 from PIL import Image
 
 from ..backends import get_backend
-from ..config import OUTPUT_ROOT, GenerationRequest
+from ..config import DEFAULT_TARGET_FACES, DEFAULT_TEXTURE_SIZE, OUTPUT_ROOT, GenerationRequest
 from ..gpu import low_vram
+from ..styles import resolve as resolve_style
 from . import images, materials
 from .mesh import prepare_mesh
 
@@ -39,6 +40,15 @@ def _safe_name(name: str) -> str:
 def generate(req: GenerationRequest, progress: ProgressFn | None = None,
              job_id: str | None = None, output_root: Path = OUTPUT_ROOT) -> GenerationResult:
     req.validate()
+    style = resolve_style(req.style_pack, req.faction, req.category, req.condition)
+    texture_size = req.texture_size or (style and style.texture) or DEFAULT_TEXTURE_SIZE
+    if req.target_faces is not None:
+        faces = req.target_faces
+    else:
+        faces = (style and style.tris) or DEFAULT_TARGET_FACES
+    size_m = req.real_world_size_m or (style and style.size_m) or None
+    size_axis = req.size_axis or (style.size_axis if style else "height")
+    pivot = req.pivot or (style.pivot if style else "bottom_center")
     progress = progress or (lambda stage, frac: log.info("[%3d%%] %s", frac * 100, stage))
     job_id = job_id or uuid.uuid4().hex[:12]
     out = output_root / job_id
@@ -54,7 +64,7 @@ def generate(req: GenerationRequest, progress: ProgressFn | None = None,
         reference = Image.open(req.image_path)
     else:
         progress("Generating photoreal reference image", 0.05)
-        reference = images.text_to_image(req.prompt, req.seed, req.realism)
+        reference = images.text_to_image(req.prompt, req.seed, req.realism, style)
         if low_vram():
             images.release_text_to_image()
     reference.save(out / "reference.png")
@@ -69,14 +79,15 @@ def generate(req: GenerationRequest, progress: ProgressFn | None = None,
     progress(f"Loading {req.backend} model", 0.25)
     backend = get_backend(req.backend)
     progress(f"Generating 3D mesh with {req.backend}", 0.3)
-    mesh = backend.generate(cutout, seed=req.seed, texture_size=req.texture_size,
-                            target_faces=req.target_faces)
+    mesh = backend.generate(cutout, seed=req.seed, texture_size=texture_size,
+                            target_faces=faces or None)
 
     # 3. Realism pass: delight + PBR maps
     base_color = materials.extract_base_color(mesh)
     if req.realism and base_color is not None:
         progress("Building PBR materials (delight, normal, roughness, AO)", 0.75)
-        maps = materials.build_pbr_maps(base_color, req.delight_strength)
+        maps = materials.build_pbr_maps(base_color, req.delight_strength,
+                                        style.material if style else None)
         materials.apply_pbr_maps(mesh, maps)
         for label, img, suffix in [
             ("albedo", maps.albedo, "BaseColor"),
@@ -85,7 +96,12 @@ def generate(req: GenerationRequest, progress: ProgressFn | None = None,
             ("roughness", maps.roughness, "Roughness"),
             ("ao", maps.ao, "AO"),
             ("orm", maps.orm, "ORM"),
+            ("metallic", maps.metallic, "Metallic"),
+            ("emissive", maps.emissive, "Emissive"),
+            ("emissive_mask", maps.emissive_mask, "EmissiveMask"),
         ]:
+            if img is None:
+                continue
             fname = f"T_{name}_{suffix}.png"
             img.save(textures / fname)
             result.files[label] = f"textures/{fname}"
@@ -94,7 +110,8 @@ def generate(req: GenerationRequest, progress: ProgressFn | None = None,
 
     # 4. Game-ready mesh
     progress("Cleaning mesh and setting real-world scale", 0.88)
-    mesh = prepare_mesh(mesh, req.target_faces, req.real_world_height_m)
+    mesh = prepare_mesh(mesh, faces or None, size_m, size_axis, pivot,
+                        style.grid_m if style else None)
 
     # 5. Export
     progress("Exporting", 0.95)
@@ -115,6 +132,8 @@ def generate(req: GenerationRequest, progress: ProgressFn | None = None,
         "size_m": {"x": round(float(extents[0]), 3), "y": round(float(extents[1]), 3),
                    "z": round(float(extents[2]), 3)},
         "seconds": round(time.time() - t0, 1),
+        "texture_size": texture_size,
+        "emissive": "emissive" in result.files,
     }
     (out / "meshify.json").write_text(json.dumps({
         "request": req.to_dict(),

@@ -10,11 +10,15 @@ from __future__ import annotations
 
 import importlib.util
 import os
+from typing import TYPE_CHECKING
 
 import numpy as np
 from PIL import Image
 
 from ..gpu import free_cuda, low_vram
+
+if TYPE_CHECKING:
+    from ..styles import ResolvedStyle
 
 # FLUX.1-schnell (Apache-2.0) is the best open photoreal model, but its 12B
 # transformer doesn't fit in under ~16 GB. On smaller cards we default to
@@ -39,13 +43,25 @@ STYLIZED_TERMS = (
 )
 NEGATIVE_PROMPT = (
     "cartoon, stylized, anime, illustration, painting, drawing, cel shading, low poly, "
-    "toy, plastic look, multiple objects, cropped, cut off, text, watermark, "
+    "toy, plastic look, multiple objects, cropped, cut off, text, letters, logo, watermark, "
     "dramatic lighting, hard shadows, busy background"
 )
 
 
-def build_prompt(prompt: str, realism: bool) -> str:
+# Shorter framing used with style packs, leaving token room for faction detail.
+STYLE_FRAMING = (
+    "single object centered, whole object in frame, plain neutral grey background, "
+    "soft even studio lighting, physically based materials, sharp focus"
+)
+
+
+def build_prompt(prompt: str, realism: bool, style: "ResolvedStyle | None" = None) -> str:
     prompt = prompt.strip().rstrip(".")
+    if style is not None:
+        parts = [style.apply_to_prompt(prompt)]
+        if realism:
+            parts += [style.render, STYLE_FRAMING]
+        return ", ".join(p for p in parts if p)
     if not realism:
         return prompt
     lowered = prompt.lower()
@@ -55,11 +71,37 @@ def build_prompt(prompt: str, realism: bool) -> str:
     return f"{prompt}, {REALISM_SUFFIX}"
 
 
+def build_prompt_pair(prompt: str, realism: bool, style: "ResolvedStyle") -> tuple[str, str]:
+    """Split a styled prompt across SDXL's two text encoders (77 tokens each).
+
+    Encoder 1 gets what the object *is* (subject, faction, asset type); encoder
+    2 gets how it looks and is framed (condition, render style, studio framing).
+    """
+    subject = ", ".join(p for p in [prompt.strip().rstrip("."), *style.prompt_parts] if p)
+    look = list(style.look_parts)
+    if realism:
+        look += [style.render, STYLE_FRAMING]
+    return subject, ", ".join(p for p in look if p)
+
+
+def build_negative(style: "ResolvedStyle | None" = None) -> str:
+    # Never negate something the style asks for (e.g. "stylized" in "stylized realism").
+    wanted = (style.render or "").lower() if style else ""
+    terms: list[str] = []
+    for chunk in [style.negative if style else None, NEGATIVE_PROMPT]:
+        for term in (chunk or "").split(","):
+            term = term.strip()
+            if term and term not in terms and term.lower() not in wanted:
+                terms.append(term)
+    return ", ".join(terms)
+
+
 _t2i_pipe = None
 _t2i_name: str | None = None
 
 
-def text_to_image(prompt: str, seed: int, realism: bool) -> Image.Image:
+def text_to_image(prompt: str, seed: int, realism: bool,
+                  style: "ResolvedStyle | None" = None) -> Image.Image:
     """Generate a reference image. Needs `pip install meshify[text]` and a GPU."""
     global _t2i_pipe, _t2i_name
     if importlib.util.find_spec("diffusers") is None:
@@ -83,14 +125,17 @@ def text_to_image(prompt: str, seed: int, realism: bool) -> Image.Image:
             _t2i_pipe.enable_model_cpu_offload()
         _t2i_name = model
 
-    full_prompt = build_prompt(prompt, realism)
-    kwargs = {"prompt": full_prompt, "generator": torch.Generator("cpu").manual_seed(seed),
-              "width": 1024, "height": 1024}
+    kwargs = {"generator": torch.Generator("cpu").manual_seed(seed), "width": 1024, "height": 1024}
+    if style is not None and "xl" in model.lower():
+        kwargs["prompt"], kwargs["prompt_2"] = build_prompt_pair(prompt, realism, style)
+    else:
+        # FLUX's T5 encoder reads up to 512 tokens, so it gets everything.
+        kwargs["prompt"] = build_prompt(prompt, realism, style)
     if "schnell" in model.lower():
         # FLUX schnell is distilled: 4 steps, no CFG, no negative prompt.
         kwargs.update(num_inference_steps=4, guidance_scale=0.0)
     else:
-        kwargs.update(num_inference_steps=30, guidance_scale=5.0, negative_prompt=NEGATIVE_PROMPT)
+        kwargs.update(num_inference_steps=30, guidance_scale=5.0, negative_prompt=build_negative(style))
     return _t2i_pipe(**kwargs).images[0]
 
 

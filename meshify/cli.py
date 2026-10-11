@@ -19,8 +19,13 @@ def _cmd_generate(args: argparse.Namespace) -> int:
         realism=not args.no_realism,
         delight_strength=args.delight,
         texture_size=args.texture_size,
-        target_faces=None if args.faces == 0 else args.faces,
-        real_world_height_m=args.height,
+        target_faces=args.faces,
+        real_world_size_m=args.size,
+        size_axis=args.size_axis,
+        style_pack=args.pack,
+        faction=args.faction,
+        category=args.type,
+        condition=args.condition,
         asset_name=args.name,
     )
     result = generate(req)
@@ -61,6 +66,18 @@ def _cmd_backends(_: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_styles(_: argparse.Namespace) -> int:
+    from .styles import list_packs
+
+    for pack in list_packs():
+        print(f"{pack['name']}  (--pack {pack['id']})")
+        print("  factions:   " + ", ".join(pack["factions"]))
+        print("  types:      " + ", ".join(
+            f"{k} [{v['tris']} tris, {v['texture']}px]" for k, v in pack["categories"].items()))
+        print("  conditions: " + ", ".join(pack["conditions"]))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     from .config import DEFAULT_BACKEND
 
@@ -75,15 +92,27 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--seed", type=int, default=42)
     g.add_argument("--no-realism", action="store_true", help="Skip photoreal shaping + PBR pass")
     g.add_argument("--delight", type=float, default=0.6, help="0..1, remove baked lighting")
-    g.add_argument("--texture-size", type=int, default=2048, choices=[512, 1024, 2048, 4096])
-    g.add_argument("--faces", type=int, default=50_000, help="Face budget (0 = full density)")
-    g.add_argument("--height", type=float, help="Real-world height in metres, e.g. 1.8")
+    g.add_argument("--texture-size", type=int, choices=[512, 1024, 2048, 4096],
+                   help="Default: from --type preset, else 2048")
+    g.add_argument("--faces", type=int, help="Triangle budget, 0 = full density "
+                   "(default: from --type preset, else 50000)")
+    g.add_argument("--size", "--height", dest="size", type=float,
+                   help="Real-world size in metres, e.g. 1.8 (default: from --type preset)")
+    g.add_argument("--size-axis", choices=["height", "longest"],
+                   help="Measure --size as height or longest side (weapons: longest)")
+    g.add_argument("--pack", help="Style pack id (see `meshify styles`)")
+    g.add_argument("--faction", "-f", help="e.g. dominion, reformation, ancient, aurelion, eclipse")
+    g.add_argument("--type", "-t", help="Asset type, e.g. weapon, modular_architecture, armor")
+    g.add_argument("--condition", "-c", help="e.g. pristine, maintained, frontier, derelict")
     g.set_defaults(func=_cmd_generate)
 
     s = sub.add_parser("serve", help="Start the web UI")
     s.add_argument("--host", default="127.0.0.1")
     s.add_argument("--port", type=int, default=7860)
     s.set_defaults(func=_cmd_serve)
+
+    st = sub.add_parser("styles", help="List style packs: factions, asset types, conditions")
+    st.set_defaults(func=_cmd_styles)
 
     b = sub.add_parser("backends", help="List 3D model backends and their licenses")
     b.set_defaults(func=_cmd_backends)

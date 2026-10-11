@@ -58,8 +58,8 @@ including Windows via WSL2 and RTX 50-series cards.
 meshify backends                     # what's installed, with licenses
 meshify serve                        # web UI at http://127.0.0.1:7860
 
-meshify generate "weathered oak barrel with iron bands" --name Barrel --height 0.9
-meshify generate --image photo.jpg --name Lantern --height 0.35 --faces 20000
+meshify generate "weathered oak barrel with iron bands" --name Barrel --size 0.9
+meshify generate --image photo.jpg --name Lantern --size 0.35 --faces 20000
 ```
 
 Each job writes a folder in `outputs/`:
@@ -71,20 +71,35 @@ textures/T_Barrel_BaseColor.png
 textures/T_Barrel_Normal_DX.png   # Unreal / DirectX
 textures/T_Barrel_Normal_GL.png   # Blender / glTF
 textures/T_Barrel_ORM.png         # R=AO, G=Roughness, B=Metallic
-textures/T_Barrel_Roughness.png, T_Barrel_AO.png
+textures/T_Barrel_Roughness.png, T_Barrel_AO.png, T_Barrel_Metallic.png
+textures/T_Barrel_Emissive.png, T_Barrel_EmissiveMask.png   # when glow is found
 reference.png, cutout.png, meshify.json
 ```
 
 Then see **[docs/UNREAL.md](docs/UNREAL.md)** for importing.
+
+## Style packs: faction × asset type × condition
+
+Meshify ships with a **Sovereign Call** style pack (Dominion, Reformation,
+Ancient Sovereign, Aurelion Enforcer, Eclipse × 9 asset types × 4 conditions).
+It sets the prompt's design language, faction-correct metallic and emissive
+materials, and per-asset-type triangle budgets, sizes and pivots:
+
+```bash
+meshify generate "heavy assault rifle" --faction dominion --type weapon --condition frontier
+```
+
+It's all one editable TOML file. See **[docs/STYLES.md](docs/STYLES.md)**.
 
 ## Options
 
 | Option | Default | |
 |---|---|---|
 | `--backend` | `trellis` | Which 3D model to use |
-| `--height` | auto | Real-world height in metres |
-| `--faces` | 50000 | Face budget, reduced *before* texture baking. `0` = full density for Nanite |
-| `--texture-size` | 2048 | 512 / 1024 / 2048 / 4096 |
+| `--faction` / `--type` / `--condition` | none | Style preset (see `meshify styles`) |
+| `--size` | preset / auto | Real-world size in metres (height, or length for weapons) |
+| `--faces` | preset / 50000 | Triangle budget, reduced *before* texture baking. `0` = full density for Nanite |
+| `--texture-size` | preset / 2048 | 512 / 1024 / 2048 / 4096 |
 | `--delight` | 0.6 | 0 keeps baked lighting, 1 flattens it fully |
 | `--no-realism` | off | Skip the photoreal prompt and PBR pass |
 | `--seed` | 42 | Same seed + same input = same result |
@@ -97,7 +112,8 @@ meshify/
   pipeline/
     images.py     # text-to-image, realism prompt, background removal, framing
     materials.py  # delighting, normal/roughness/AO, ORM packing
-    mesh.py       # floater removal, decimation, scale and pivot
+    mesh.py       # floater removal, decimation, scale, grid snap and pivot
+  styles/         # style packs (sovereign_call.toml)
     run.py        # the end-to-end pipeline
   server.py       # local web API + job queue
   web/            # browser UI (offline, with a vendored 3D viewer)
@@ -106,7 +122,7 @@ meshify/
 
 ## Roadmap
 
-- [ ] Learned PBR materials (replace the image-space heuristics, detect metals)
+- [ ] Learned PBR materials (replace the image-space colour heuristics)
 - [ ] Multi-view input (front/side/back photos) for better geometry
 - [ ] Automatic retopology and LOD generation
 - [ ] FBX export

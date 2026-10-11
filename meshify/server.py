@@ -23,6 +23,7 @@ from .backends import list_backends
 from .gpu import blackwell_torch_problem, gpu_info, low_vram
 from .config import DEFAULT_BACKEND, OUTPUT_ROOT, GenerationRequest
 from .pipeline.run import generate
+from .styles import list_packs
 
 log = logging.getLogger(__name__)
 WEB_DIR = Path(__file__).parent / "web"
@@ -72,6 +73,11 @@ def system() -> dict:
     return {"gpu": gpu_info(), "low_vram": low_vram(), "warning": blackwell_torch_problem()}
 
 
+@app.get("/api/styles")
+def styles() -> list[dict]:
+    return list_packs()
+
+
 @app.post("/api/jobs")
 async def create_job(
     prompt: str = Form(""),
@@ -80,9 +86,14 @@ async def create_job(
     seed: int = Form(42),
     realism: bool = Form(True),
     delight_strength: float = Form(0.6),
-    texture_size: int = Form(2048),
-    target_faces: int = Form(50_000),
-    real_world_height_m: float = Form(0.0),
+    texture_size: int = Form(0),
+    target_faces: str = Form(""),
+    real_world_size_m: float = Form(0.0),
+    size_axis: str = Form(""),
+    style_pack: str = Form(""),
+    faction: str = Form(""),
+    category: str = Form(""),
+    condition: str = Form(""),
     asset_name: str = Form("asset"),
 ) -> dict:
     image_path = None
@@ -91,21 +102,27 @@ async def create_job(
         image_path = tmp / ("input" + Path(image.filename).suffix.lower())
         image_path.write_bytes(await image.read())
 
-    req = GenerationRequest(
-        prompt=prompt.strip() or None,
-        image_path=str(image_path) if image_path else None,
-        backend=backend,
-        seed=seed,
-        realism=realism,
-        delight_strength=delight_strength,
-        texture_size=texture_size,
-        target_faces=target_faces or None,
-        real_world_height_m=real_world_height_m or None,
-        asset_name=asset_name,
-    )
     try:
+        req = GenerationRequest(
+            prompt=prompt.strip() or None,
+            image_path=str(image_path) if image_path else None,
+            backend=backend,
+            seed=seed,
+            realism=realism,
+            delight_strength=delight_strength,
+            texture_size=texture_size or None,
+            # "" = use the preset; "0" = full density.
+            target_faces=int(target_faces) if target_faces.strip() else None,
+            real_world_size_m=real_world_size_m or None,
+            size_axis=size_axis or None,
+            style_pack=style_pack or None,
+            faction=faction or None,
+            category=category or None,
+            condition=condition or None,
+            asset_name=asset_name,
+        )
         req.validate()
-    except ValueError as exc:
+    except (ValueError, TypeError) as exc:
         if image_path:
             shutil.rmtree(image_path.parent, ignore_errors=True)
         raise HTTPException(400, str(exc))
@@ -113,7 +130,8 @@ async def create_job(
     job_id = uuid.uuid4().hex[:12]
     _jobs[job_id] = {"id": job_id, "status": "queued", "stage": "Queued", "progress": 0.0,
                      "request": {"prompt": req.prompt, "backend": req.backend,
-                                 "asset_name": req.asset_name}}
+                                 "asset_name": req.asset_name, "faction": req.faction,
+                                 "category": req.category, "condition": req.condition}}
     _queue.put((job_id, req))
     return _jobs[job_id]
 

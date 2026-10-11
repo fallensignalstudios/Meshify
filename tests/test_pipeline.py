@@ -55,7 +55,7 @@ def test_pbr_maps_shapes_and_orm_layout():
 
 def test_end_to_end_with_dummy_backend(studio_photo, tmp_path):
     req = GenerationRequest(image_path=str(studio_photo), backend="dummy", texture_size=512,
-                            real_world_height_m=1.2, asset_name="Test Barrel")
+                            real_world_size_m=1.2, asset_name="Test Barrel")
     result = generate(req, output_root=tmp_path / "out")
 
     for key in ["glb", "obj", "albedo", "normal_dx", "orm", "reference", "cutout"]:

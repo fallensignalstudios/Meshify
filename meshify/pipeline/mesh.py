@@ -40,27 +40,55 @@ def decimate(mesh: trimesh.Trimesh, target_faces: int | None) -> trimesh.Trimesh
     return mesh.simplify_quadric_decimation(face_count=target_faces)
 
 
-def place_on_ground(mesh: trimesh.Trimesh, height_m: float | None) -> trimesh.Trimesh:
-    """glTF is Y-up, metres. Centre on X/Z, sit the base on Y=0, optionally rescale.
+def scale_to_size(mesh: trimesh.Trimesh, size_m: float, axis: str = "height") -> None:
+    """Uniformly scale so the height (Y) or the longest dimension is `size_m`."""
+    current = mesh.extents[1] if axis == "height" else mesh.extents.max()
+    if current > 0:
+        mesh.apply_scale(size_m / current)
 
-    Unreal's glTF importer converts to Z-up centimetres, so the pivot ends up
-    at the bottom centre of the asset, which is what you want for placement.
+
+def snap_to_grid(mesh: trimesh.Trimesh, grid_m: float) -> None:
+    """Uniformly scale so the widest footprint side is a whole number of grid cells.
+
+    Modular kit pieces only line up if their widths are grid multiples
+    (e.g. 1 m = 100 Unreal units).
     """
-    if height_m is not None:
-        current = mesh.extents[1]
-        if current > 0:
-            mesh.apply_scale(height_m / current)
+    footprint = max(mesh.extents[0], mesh.extents[2])
+    if footprint <= 0:
+        return
+    cells = max(1, round(footprint / grid_m))
+    mesh.apply_scale(cells * grid_m / footprint)
+
+
+def set_pivot(mesh: trimesh.Trimesh, pivot: str = "bottom_center") -> None:
+    """glTF is Y-up, metres; Unreal's importer converts to Z-up centimetres.
+
+    bottom_center: props sit on the floor where you drop them.
+    bottom_corner: modular pieces snap edge-to-edge on Unreal's grid.
+    center: weapons and armour, for attaching to sockets.
+    """
     lo, hi = mesh.bounds
-    offset = np.array([-(lo[0] + hi[0]) / 2, -lo[1], -(lo[2] + hi[2]) / 2])
+    centre = (lo + hi) / 2
+    if pivot == "center":
+        offset = -centre
+    elif pivot == "bottom_corner":
+        offset = np.array([-lo[0], -lo[1], -lo[2]])
+    else:
+        offset = np.array([-centre[0], -lo[1], -centre[2]])
     mesh.apply_translation(offset)
-    return mesh
 
 
-def prepare_mesh(mesh: trimesh.Trimesh, target_faces: int | None,
-                 height_m: float | None) -> trimesh.Trimesh:
+def prepare_mesh(mesh: trimesh.Trimesh, target_faces: int | None, size_m: float | None,
+                 size_axis: str = "height", pivot: str = "bottom_center",
+                 grid_m: float | None = None) -> trimesh.Trimesh:
     mesh = remove_floaters(mesh)
     mesh = decimate(mesh, target_faces)
-    if height_m is None:
-        # Unknown real size: default to ~1m tall so it isn't microscopic in-engine.
-        height_m = 1.0 if mesh.extents.max() < 0.05 or mesh.extents.max() > 50 else None
-    return place_on_ground(mesh, height_m)
+    if size_m is not None:
+        scale_to_size(mesh, size_m, size_axis)
+    elif mesh.extents.max() < 0.05 or mesh.extents.max() > 50:
+        # Unknown real size: default to ~1m so it isn't microscopic in-engine.
+        scale_to_size(mesh, 1.0, "longest")
+    if grid_m:
+        snap_to_grid(mesh, grid_m)
+    set_pivot(mesh, pivot)
+    return mesh
