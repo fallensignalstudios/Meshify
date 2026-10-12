@@ -171,6 +171,31 @@ the archetype becomes an edge map for a canny ControlNet
 Guides combine with style references (materials) and the judge (best of N):
 the outline comes from the guide, the look from the references.
 
+### Variants (a sniper keeps its scope, a sword has no barrel)
+
+An asset type can have variants chosen by prompt words. The first match
+replaces the type's `structure`, `negative`, `good` and `bad`:
+
+```toml
+[categories.weapon.variants.marksman]
+match = ["sniper", "marksman", "dmr", "precision"]
+structure = "one precision scope, long single barrel, believable proportions"
+```
+
+Weapons default to a compact holographic sight (and negate "sniper scope").
+`marksman` keeps a scope, `sidearm` is a compact handgun with no scope or
+stock, and `melee` (blade, sword, axe, spear, staff...) drops gun parts
+entirely. Guides follow the same split: `assault_rifle` has a compact sight,
+`marksman_rifle` the scope.
+
+### Faction accents (colours that must survive)
+
+`accents` are the faction colours that tend to get lost (Dominion oxblood
+enamel and amber light strips). They lead SDXL's *second* encoder, while the
+faction prompt sits on the first, so they're stated twice. That's the
+strongest emphasis plain prompts allow. Dominion also negates "all black,
+monochrome, unpainted". For even more colour, raise *Style strength*.
+
 ### Per-asset-type faction language (overrides)
 
 Generic faction words lose to strong nouns: "Dominion... assault rifle" still

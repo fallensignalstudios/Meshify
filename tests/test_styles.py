@@ -192,12 +192,14 @@ def test_every_styled_prompt_fits_sdxl_token_limits():
     for faction in pack["factions"]:
         for category in pack["categories"]:
             for condition in pack["conditions"]:
-                style = resolve("sovereign_call", faction, category, condition)
-                halves = [*images.build_prompt_pair("heavy assault rifle", True, style),
-                          *images.build_negative_pair(style)]
-                for half in halves:
-                    assert images.approx_clip_tokens(half) <= images.CLIP_TOKEN_LIMIT, \
-                        (faction, category, condition, half)
+                for prompt in ["heavy assault rifle", "long range sniper rifle",
+                               "imperial pistol", "ceremonial greatsword"]:  # all variants
+                    style = resolve("sovereign_call", faction, category, condition, prompt)
+                    halves = [*images.build_prompt_pair(prompt, True, style),
+                              *images.build_negative_pair(style)]
+                    for half in halves:
+                        assert images.approx_clip_tokens(half) <= images.CLIP_TOKEN_LIMIT, \
+                            (faction, category, condition, prompt, half)
 
 
 def test_negative_split_keeps_framing_negatives_on_second_encoder():
@@ -300,7 +302,8 @@ def test_judge_picks_the_best_uncropped_candidate(tmp_path, monkeypatch):
     assert calls == [10, 11, 12]
     chosen = [c for c in result.stats["candidates"] if c["chosen"]]
     assert chosen[0]["seed"] == 12 and result.stats["candidates"][1]["cropped"]
-    assert any("one scope" in g for g in seen["good"])
+    assert any("compact sight" in g for g in seen["good"])
+    assert "an assault rifle with a long sniper scope" in seen["bad"]
     assert "a gun with two scopes" in seen["bad"]
     assert (result.output_dir / result.files["candidate_2"]).is_file()
 
@@ -319,8 +322,33 @@ def test_without_a_judge_only_one_candidate_is_made(tmp_path, monkeypatch):
 
 
 def test_weapon_prompts_carry_structure_rules():
-    style = resolve(None, "dominion", "weapon", "maintained")
+    style = resolve(None, "dominion", "weapon", "maintained", "heavy assault rifle")
     _, look = images.build_prompt_pair("heavy assault rifle", True, style)
-    assert "one integrated optic" in look and "believable proportions" in look
+    assert "compact holographic sight" in look and "believable proportions" in look
     first_neg, _ = images.build_negative_pair(style)
-    assert "two scopes" in first_neg and "duplicate parts" in first_neg
+    assert "sniper scope" in first_neg and "two scopes" in first_neg
+
+
+@pytest.mark.parametrize("prompt,structure,negated,allowed", [
+    ("heavy assault rifle", "compact holographic sight", "sniper scope", None),
+    ("long range sniper rifle", "one precision scope", "two scopes", "sniper scope"),
+    ("imperial pistol", "compact handgun", "rifle stock", None),
+    ("ceremonial greatsword", "single blade", "gun parts", "single barrel"),
+])
+def test_weapon_variants_follow_the_prompt(prompt, structure, negated, allowed):
+    for category in ["weapon", "hero_weapon"]:
+        style = resolve(None, "dominion", category, None, prompt)
+        _, look = images.build_prompt_pair(prompt, True, style)
+        first_neg, _ = images.build_negative_pair(style)
+        assert structure in look and negated in first_neg
+        if allowed:  # e.g. a sniper may have a scope; a sword never gets "single barrel"
+            assert allowed not in first_neg.split(", ") and allowed not in look
+
+
+def test_faction_accents_are_stated_in_both_encoders():
+    style = resolve(None, "dominion", "weapon", "frontier", "heavy assault rifle")
+    first, second = images.build_prompt_pair("heavy assault rifle", True, style)
+    for colour in ["oxblood", "amber"]:
+        assert colour in first and colour in second
+    assert second.startswith("deep oxblood red enamel panels, glowing amber light strips")
+    assert "all black" in images.build_negative_pair(style)[0]

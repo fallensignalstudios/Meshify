@@ -128,7 +128,7 @@ def _safe_name(name: str) -> str:
 def generate(req: GenerationRequest, progress: ProgressFn | None = None,
              job_id: str | None = None, output_root: Path = OUTPUT_ROOT) -> GenerationResult:
     req.validate()
-    style = resolve_style(req.style_pack, req.faction, req.category, req.condition)
+    style = resolve_style(req.style_pack, req.faction, req.category, req.condition, req.prompt)
     texture_size = req.texture_size or (style and style.texture) or DEFAULT_TEXTURE_SIZE
     if req.target_faces is not None:
         faces = req.target_faces

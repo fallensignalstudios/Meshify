@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import sys
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -200,8 +201,18 @@ def _library_counts(data: dict) -> dict[str, int]:
     return counts
 
 
+def _apply_variant(cat: dict, prompt: str | None) -> dict:
+    """Asset-type variants: the first whose `match` words appear in the prompt
+    replaces the type's structure/negative/good/bad ("sniper" keeps a scope)."""
+    words = set(re.findall(r"[a-z]+", (prompt or "").lower()))
+    for variant in cat.get("variants", {}).values():
+        if words & {m.lower() for m in variant.get("match", [])}:
+            return {**cat, **{k: v for k, v in variant.items() if k != "match"}}
+    return cat
+
+
 def resolve(pack: str | None, faction: str | None, category: str | None,
-            condition: str | None) -> ResolvedStyle | None:
+            condition: str | None, prompt: str | None = None) -> ResolvedStyle | None:
     if not (pack or faction or category or condition):
         return None
     packs = load_packs()
@@ -222,6 +233,7 @@ def resolve(pack: str | None, faction: str | None, category: str | None,
         return data[section][key]
 
     fac, cat, cond = pick("factions", faction), pick("categories", category), pick("conditions", condition)
+    cat = _apply_variant(cat, prompt)
     # A faction can speak differently per asset type (e.g. Dominion weapons).
     override = fac.get("overrides", {}).get(category, {}) if category else {}
     faction_prompt = override.get("prompt", fac.get("prompt"))
@@ -240,8 +252,11 @@ def resolve(pack: str | None, faction: str | None, category: str | None,
     return ResolvedStyle(
         # Order matters for 77-token CLIP models: faction look first, then framing.
         prompt_parts=[faction_prompt] if faction_prompt else [],
-        # Condition, then asset-type structure rules (e.g. "one integrated optic").
-        look_parts=[p for p in (cond.get("prompt"), cat.get("structure")) if p],
+        # Faction accents lead SDXL's second encoder too (the faction prompt is on
+        # the first), so key colours like oxblood and amber are stated twice.
+        # Then condition and asset-type structure rules ("compact sight").
+        look_parts=[p for p in (override.get("accents", fac.get("accents")),
+                                cond.get("prompt"), cat.get("structure")) if p],
         negative=negative,
         identity_negative=", ".join(n for n in [cat.get("negative"), fac.get("negative"),
                                                 override.get("negative")] if n),

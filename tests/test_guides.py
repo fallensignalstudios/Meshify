@@ -83,3 +83,19 @@ def test_guide_can_be_turned_off_or_named(tmp_path, monkeypatch):
     assert result.stats["guide"] == "heavy_weapon"
     with pytest.raises(ValueError, match="Unknown silhouette guide"):
         generate(GenerationRequest(**base, guide="laser_sword"), output_root=tmp_path)
+
+
+def test_assault_rifle_guides_have_no_sniper_scope_but_marksman_does():
+    data = load_packs()["sovereign_call"]
+
+    def height_to_length(name):
+        g = np.asarray(Image.open(data["_dir"] / "guides" / "dominion" / "weapon" / f"{name}.png")
+                       .convert("L")) < 128
+        ys, xs = np.nonzero(g)
+        return (ys.max() - ys.min()) / (xs.max() - xs.min())
+
+    # The scope sits on top, so removing it makes the outline markedly lower.
+    assert height_to_length("assault_rifle") < 0.92 * height_to_length("marksman_rifle")
+    lib = guides.list_guides(data, "dominion", "weapon")
+    assert guides.choose(lib, "heavy assault rifle").stem == "assault_rifle"
+    assert guides.choose(lib, "long range sniper rifle").stem == "marksman_rifle"
