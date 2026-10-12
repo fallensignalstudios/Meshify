@@ -58,7 +58,11 @@ def _to_image(arr: np.ndarray, mode: str = "RGB") -> Image.Image:
     return Image.fromarray((np.clip(arr, 0, 1) * 255 + 0.5).astype(np.uint8), mode)
 
 
-EMISSIVE_EPS = 2 / 255  # smallest emission that survives 8-bit export
+# Conservative emission cutoff for 8-bit export (1/255 is representable, but a
+# 2/255 floor keeps quantization noise from becoming specks of glow).
+EMISSIVE_EPS = 2 / 255
+# Detail (luminance) amplitude that maps to full relief at minimum; see height_from_albedo.
+DETAIL_AMPLITUDE_FLOOR = 0.1
 
 
 def uv_occupancy(mesh: trimesh.Trimesh, size: tuple[int, int], dilate: int = 2) -> np.ndarray | None:
@@ -141,7 +145,11 @@ def height_from_albedo(rgb: np.ndarray, mask: np.ndarray | None = None) -> np.nd
     detail = np.sign(detail) * np.maximum(np.abs(detail) - 1.5 * noise, 0)
     nonzero = np.abs(detail[mask] if mask is not None else detail)
     nonzero = nonzero[nonzero > 0]
-    scale = (np.percentile(nonzero, 99) if nonzero.size else 0.0) + 1e-6
+    # Normalize against an absolute floor as well as the texture's own range:
+    # otherwise a texture with nothing but faint leftover grain gets that grain
+    # stretched to full relief. Measured: residual grain ~0.004, a real panel
+    # line ~0.17, concept-art rifles 0.22-0.35 (luminance units).
+    scale = max(np.percentile(nonzero, 99) if nonzero.size else 0.0, DETAIL_AMPLITUDE_FLOOR)
     return np.clip(0.5 + 0.5 * detail / scale, 0, 1)
 
 

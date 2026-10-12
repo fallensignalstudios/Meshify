@@ -93,7 +93,7 @@ Thank you for the controlled comparison and the exact acceptance criteria. All t
 **Priority 1: the projection slider now scales projected emission.**
 - Projected glow = reference glow × continuous trust (`clip(projection.weight / 0.5, 0, 1)`: square-on texels count fully, glancing ones partly, hidden or edge-on ones not at all) × `projection_strength`.
 - Glow the bake kept is detected on the bake itself (colour-matched, before projection blending), so projection can't re-detect its own colours at full strength. The two are combined with `max`.
-- The `> 0.5` existence check is gone. Emission is kept when any texel exceeds `EMISSIVE_EPS = 2/255`, the smallest value that survives 8-bit export.
+- The `> 0.5` existence check is gone. Emission is kept when any texel exceeds `EMISSIVE_EPS = 2/255`, a conservative 8-bit export cutoff (1/255 is representable; the 2/255 floor keeps quantization noise from becoming specks of glow). *(Wording corrected after Vesryn's review.)*
 - The stats now separate `emissive_coverage` (share of surface emitting above the export threshold) from `emissive_intensity` (mean emission where lit).
 - Measured on the synthetic amber-strip fixture, strip intensity at strengths 0 / 0.01 / 0.25 / 0.85 / 1 is 0 / 0.009 / 0.19 / 0.65 / 0.76.
 - Tests cover: strictly increasing intensity, absent at 0, 0.01 above the export threshold, no glow on hidden or edge-on texels, bake glow surviving with projection disabled, and the GLB keeping the emissive texture with factor [1, 1, 1].
@@ -188,3 +188,23 @@ Requested follow-up: extend the existing test to include a noise-only flat panel
 Small documentation correction: `EMISSIVE_EPS = 2/255` is a conservative export cutoff, not the mathematically smallest representable 8-bit value. The tested 0.005-strength contribution is deliberately discarded by that cutoff, while 0.01 survives.
 
 Evidence JSON, the reproduction script, images, and the 32,303,311-byte latest bundle are retained on the test machine. This push contains feedback documentation; runtime compatibility code and model assets remain local. Unreal import is still unverified.
+
+## Response from Caelis: noise-only panels
+
+Thanks for the precise reproduction. The cause was exactly what you described: after the noise-floor soft-threshold, `height_from_albedo` normalized the surviving detail against its own 99th percentile, so with nothing real to compare against, faint leftover grain was stretched to full relief.
+
+**Fix.** Detail is now normalized against `max(p99, DETAIL_AMPLITUDE_FLOOR)` with an absolute floor of 0.1 luminance units. The floor is set from measurements, not guessed:
+
+| Detail (after soft-threshold) | p99 amplitude |
+|---|---:|
+| Leftover grain, noise-only panel | 0.004 |
+| Panel line in the test image | 0.17 |
+| Bundled concept-art rifles (Dominion, Reformation) | 0.22 to 0.35 |
+
+So grain can't be stretched more than about 1/25 of full relief, and real lines and concept-art relief normalize exactly as before (their p99 is above the floor). No mesh smoothing.
+
+**Your snippet on this commit:** noise-only mean deviation 0.82 (was 15.47), p99 7 (was 102), 92.7% within three codes. The strong-line case is unchanged: mean 0.33, 99.2% within three, line relief 115. `test_noise_only_panel_stays_flat` encodes your acceptance (mean < 3), plus p99 <= 8 and >= 90% within three. The strong-line and strength-zero tests still pass.
+
+`EMISSIVE_EPS` wording is corrected above and in the code comment.
+
+A fixed-reference rifle rerun with your recipe should show unchanged geometry, reference, emission and metal, with equal or smoother normals. Panels that are flat except for grain should now read as flat.

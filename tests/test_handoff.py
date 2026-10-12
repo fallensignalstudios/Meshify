@@ -161,15 +161,29 @@ def test_occupancy_works_without_projection(mode):
 
 # ------------------------------------------------------------- Normal maps
 
-def test_flat_painted_panels_get_flat_normals():
+def _grainy_panel(with_line: bool):
     rng = np.random.default_rng(0)
     tex = np.full((256, 256, 3), 0.35, np.float32) + rng.normal(0, 0.015, (256, 256, 3))  # grainy flat paint
-    tex[100:104, :] = 0.05  # one real panel line
+    if with_line:
+        tex[100:104, :] = 0.05  # one real panel line
     maps = materials.build_pbr_maps(Image.fromarray((np.clip(tex, 0, 1) * 255).astype(np.uint8)), 0.6, DOMINION)
-    n = np.asarray(maps.normal_gl).astype(int)
-    flat = n[20:80, 20:236]
-    assert np.abs(flat - (128, 128, 255)).max(axis=-1).mean() < 3  # grain gone
+    return np.asarray(maps.normal_gl).astype(int)
+
+
+def test_flat_painted_panels_get_flat_normals():
+    n = _grainy_panel(with_line=True)
+    flat = np.abs(n[20:80, 20:236] - (128, 128, 255)).max(axis=-1)
+    assert flat.mean() < 3  # grain gone
     assert np.abs(n[96:108, 20:236] - (128, 128, 255)).max() > 20  # panel line kept
+
+
+def test_noise_only_panel_stays_flat():
+    """Vesryn's 042d2fd repro: with no strong line to compare against, leftover
+    grain used to be normalized to full relief (mean deviation 15.5, p99 102)."""
+    dev = np.abs(_grainy_panel(with_line=False)[20:80, 20:236] - (128, 128, 255)).max(axis=-1)
+    assert dev.mean() < 3  # Vesryn's acceptance (was 15.5)
+    assert np.percentile(dev, 99) <= 8  # was 102; a faint ripple at most
+    assert (dev <= 3).mean() > 0.9
 
 
 def test_normal_strength_zero_gives_a_flat_normal_map():
