@@ -208,3 +208,40 @@ So grain can't be stretched more than about 1/25 of full relief, and real lines 
 `EMISSIVE_EPS` wording is corrected above and in the code comment.
 
 A fixed-reference rifle rerun with your recipe should show unchanged geometry, reference, emission and metal, with equal or smoother normals. Panels that are flat except for grain should now read as flat.
+
+## Verification from Vesryn: 592e3bb
+
+Tested upstream [592e3bb](https://github.com/fallensignalstudios/Meshify/commit/592e3bbc051a2aae0f4e27ea43f5629c27eb0694) on the same native Windows RTX 5070 setup. **The remaining noise-only flat-panel reproduction is resolved.** All 143 locally adapted checkout tests pass in 85.64 seconds.
+
+Independent CPU reproduction confirms:
+
+| Fixture measure | 042d2fd | 592e3bb |
+|---|---:|---:|
+| Noise-only mean deviation from flat RGB | 15.47 | 0.82 |
+| Noise-only p99 deviation | 102 | 7 |
+| Noise-only texels within three codes | 62.89% | 92.65% |
+| Strong-line flat-region mean deviation | 0.33 | 0.33 |
+| Strong-line relief deviation | 115 | 115 |
+
+The exact snippet from the preceding feedback now passes. The strong-line and strength-zero regressions also pass. The amplitude floor remains 0.1, with no mesh smoothing. The emission-cutoff wording is corrected.
+
+### Full neural rerun and export
+
+Job 61aa9650071d, DominionNoiseFloorRifle, used the established recipe: heavy assault rifle / Dominion / Weapon / Maintained, starting seed 42, three candidates, four automatic style references, guide/style strengths 0.6, projection 0.85, normal strength 1.0, and category defaults. Seed 43 was chosen again.
+
+Completed in **814.9 seconds** with 20,000 triangles, 12,724 vertices, 2048 textures, 1 m longest dimension, and centered pivot. The run encountered near-full VRAM usage while Unreal Editor was also open; the timing is not an isolated performance benchmark or evidence of a code regression.
+
+Against job 31877168849a:
+
+- All reference/candidate/style/guide images and the geometry, bounds, and UVs are identical.
+- Base color, metallic, emissive, and emissive-mask PNG pixels are identical. The rifle preserves its amber channel, oxblood panels, and bronze trim.
+- Surface metallic coverage remains 80.42%; mean sRGB luminance remains 0.14085; emissive-mask surface coverage above 2/255 remains 1.894%, with mean lit intensity 0.7029.
+- Mean sampled roughness is effectively unchanged (0.429239); mean normal angle is effectively unchanged (6.3238 degrees); exactly flat normal coverage remains 61.205%. This is expected for this detailed reference, whose amplitude already exceeds the new floor. The noise-only fixture demonstrates the targeted improvement.
+- Derived normal, roughness, AO, and ORM images have minor pixel differences; they are not claimed to be pixel-identical.
+- The GLB embeds base color, normal, ORM, and emissive images pixel-for-pixel with their exported PNGs. Emissive factor is [1, 1, 1].
+
+Framing, finite geometry, normal presence, metallic/ORM blue-channel consistency, scale, and pivot all pass. The asset bundle is 32,303,462 bytes. Comparison methodology remains 300,000 area-uniform surface samples, seed 42, and nearest UV texel sampling; these map measures are not ground-truth material labels.
+
+**Result:** all reported handoff reproductions are now resolved in the tested cases. No new blocking regression was found in this run. Artist cleanup of generated geometry or painted scuffs remains a separate assessment; Unreal import remains unverified.
+
+Evidence and the asset bundle are retained on the test machine: noise-probe JSON/script, full job metadata, input verification, and surface comparison. This update contains tested feedback documentation, with the runtime compatibility changes and model assets kept local.
