@@ -150,6 +150,27 @@ duplicates, but it isn't a precise counter, which is why the prompt carries
 the same rules. More candidates mean better odds but proportionally more time
 (SDXL takes a few seconds per image on an RTX 5070).
 
+## Silhouette guides (guaranteed proportions)
+
+The judge picks the best candidate. A guide makes every candidate follow the
+right outline in the first place. For text prompts on SDXL, a silhouette of
+the archetype becomes an edge map for a canny ControlNet
+(`diffusers/controlnet-canny-sdxl-1.0`, downloaded on first use; override with
+`MESHIFY_CONTROLNET`).
+
+- Guides live in `meshify/styles/guides/<faction>/<asset type>/` (bundled:
+  rifles, sidearms, heavy weapons and blades from the faction boards). See
+  that folder's README.
+- **Auto** (default) picks the guide whose name matches the prompt ("heavy
+  assault rifle" -> `assault_rifle`, "pistol" -> `sidearm`). No match, no guide.
+- In the UI, the *Silhouette guide* panel shows which one will be used. Pick
+  another, choose None, or upload a one-off silhouette. CLI: `--guide auto|none|<name>|path.png`.
+- **Guide strength** (0-1, default 0.6): higher follows the outline more
+  strictly. The guide lets go for the last 20% of steps so details can form.
+
+Guides combine with style references (materials) and the judge (best of N):
+the outline comes from the guide, the look from the references.
+
 ### Per-asset-type faction language (overrides)
 
 Generic faction words lose to strong nouns: "Dominion... assault rifle" still

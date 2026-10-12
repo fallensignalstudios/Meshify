@@ -24,7 +24,8 @@ from .backends import list_backends
 from .gpu import blackwell_torch_problem, gpu_info, low_vram
 from .config import DEFAULT_BACKEND, OUTPUT_ROOT, GenerationRequest
 from .pipeline.run import generate
-from .styles import add_reference, delete_reference, list_library, list_packs, load_packs
+from .pipeline import guides
+from .styles import resolve, add_reference, delete_reference, list_library, list_packs, load_packs
 
 log = logging.getLogger(__name__)
 WEB_DIR = Path(__file__).parent / "web"
@@ -91,6 +92,34 @@ def references(pack: str, faction: str, category: str = "") -> list[dict]:
     return refs
 
 
+@app.get("/api/guides")
+def list_guides_api(pack: str, faction: str = "", category: str = "", prompt: str = "") -> dict:
+    """Guides for this faction + asset type, and which one "auto" would pick."""
+    try:
+        style = resolve(pack, faction or None, category or None, None)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    found = style.guides if style else []
+    auto = guides.choose(found, prompt) if prompt else None
+    return {
+        "guides": [{"name": g.stem, "url": f"/api/guides/file?path={quote(str(g))}"} for g in found],
+        "auto": auto.stem if auto else None,
+    }
+
+
+@app.get("/api/guides/file")
+def guide_file(path: str) -> FileResponse:
+    target = Path(path).resolve()
+    allowed = set()
+    for pack in list_packs():
+        for faction in pack["factions"]:
+            for category in pack["categories"]:
+                allowed |= {g.resolve() for g in resolve(pack["id"], faction, category, None).guides}
+    if target not in allowed:
+        raise HTTPException(404, "Not a guide")
+    return FileResponse(target)
+
+
 @app.get("/api/references/file")
 def reference_file(path: str) -> FileResponse:
     target = Path(path).resolve()
@@ -153,6 +182,9 @@ async def create_job(
     style_images: list[UploadFile] = File(default_factory=list),
     style_strength: float = Form(0.6),
     candidates: int = Form(0),
+    guide: str = Form("auto"),
+    guide_image: UploadFile | None = File(None),
+    guide_strength: float = Form(0.6),
     asset_name: str = Form("asset"),
 ) -> dict:
     image_path = None
@@ -166,6 +198,11 @@ async def create_job(
             path = tmp / f"style_{i}{Path(upload.filename).suffix.lower()}"
             path.write_bytes(await upload.read())
             style_paths.append(str(path))
+
+    if guide_image is not None and guide_image.filename:
+        guide_path = tmp / ("guide" + Path(guide_image.filename).suffix.lower())
+        guide_path.write_bytes(await guide_image.read())
+        guide = str(guide_path)
 
     try:
         req = GenerationRequest(
@@ -187,6 +224,8 @@ async def create_job(
             style_image_paths=style_paths,
             style_strength=style_strength,
             candidates=candidates or None,
+            guide=guide or "auto",
+            guide_strength=guide_strength,
             asset_name=asset_name,
         )
         req.validate()

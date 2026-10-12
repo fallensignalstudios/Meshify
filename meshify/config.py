@@ -38,6 +38,8 @@ class GenerationRequest:
     style_image_paths: list[str] = field(default_factory=list)  # replace the library refs
     style_strength: float = 0.6  # how strongly the reference's look is applied
     candidates: int | None = None  # text-to-image candidates to judge (None = default 3)
+    guide: str | None = None  # silhouette: None/"auto" = match prompt, "none", a guide name or file path
+    guide_strength: float = 0.6  # how strictly the reference follows the silhouette
 
     # Realism pipeline
     realism: bool = True  # photoreal prompt shaping + delighting + PBR maps
@@ -58,6 +60,8 @@ class GenerationRequest:
             raise ValueError("Provide a prompt, an image, or both.")
         if self.candidates is not None and not 1 <= self.candidates <= 8:
             raise ValueError("candidates must be between 1 and 8.")
+        if not 0.0 <= self.guide_strength <= 1.0:
+            raise ValueError("guide_strength must be between 0 and 1.")
         if not 0.0 <= self.style_strength <= 1.0:
             raise ValueError("style_strength must be between 0 and 1.")
         if not 0.0 <= self.delight_strength <= 1.0:

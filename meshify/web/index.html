@@ -117,6 +117,16 @@
           </div>
           <input type="file" id="refupload" accept="image/*" multiple hidden>
         </div>
+        <div id="guidebox" hidden>
+          <label for="guide">Silhouette guide</label>
+          <select id="guide" name="guide"></select>
+          <div class="refs" id="guides"></div>
+          <div class="hint" id="guidehint"></div>
+          <label for="guide_strength">Guide strength: <b id="gsv">0.6</b></label>
+          <input id="guide_strength" name="guide_strength" type="range" min="0" max="1" step="0.05" value="0.6">
+          <label for="guide_image">One-off guide (silhouette or line art)</label>
+          <input id="guide_image" name="guide_image" type="file" accept="image/*">
+        </div>
         <label for="style_strength">Style strength: <b id="ssv">0.6</b></label>
         <input id="style_strength" name="style_strength" type="range" min="0" max="1" step="0.05" value="0.6">
         <label for="style_images">One-off style references (optional)</label>
@@ -166,6 +176,7 @@
 const $ = (id) => document.getElementById(id);
 let shownJob = null;
 
+$("guide_strength").oninput = (e) => $("gsv").textContent = e.target.value;
 $("style_strength").oninput = (e) => $("ssv").textContent = e.target.value;
 $("delight_strength").oninput = (e) => $("dlv").textContent = e.target.value;
 
@@ -210,11 +221,39 @@ fetch("/api/styles").then(r => r.json()).then(packs => {
   }
   $("category").append(option("", "— generic —"));
   for (const [k, c] of Object.entries(pack.categories)) $("category").append(option(k, c.label));
-  $("category").onchange = () => { presetHint(); loadRefs(); };
-  $("faction").onchange = loadRefs;
+  $("category").onchange = () => { presetHint(); loadRefs(); loadGuides(); };
+  $("faction").onchange = () => { loadRefs(); loadGuides(); };
+  $("prompt").addEventListener("input", () => { clearTimeout(window._gt); window._gt = setTimeout(loadGuides, 400); });
+  $("guide").onchange = showGuidePick;
   presetHint();
   loadRefs();
+  loadGuides();
 });
+
+let guideInfo = { guides: [], auto: null };
+async function loadGuides() {
+  const faction = $("faction").value, category = $("category").value;
+  const q = new URLSearchParams({ pack: $("style_pack").value, faction, category,
+                                  prompt: $("prompt").value });
+  guideInfo = await (await fetch("/api/guides?" + q)).json();
+  $("guidebox").hidden = !guideInfo.guides.length;
+  const keep = $("guide").value;
+  $("guide").innerHTML = "";
+  $("guide").append(option("auto", "Auto (match the prompt)"), option("none", "None"));
+  for (const g of guideInfo.guides) $("guide").append(option(g.name, g.name.replaceAll("_", " ")));
+  if ([...$("guide").options].some(o => o.value === keep)) $("guide").value = keep;
+  showGuidePick();
+}
+function showGuidePick() {
+  const v = $("guide").value;
+  const pick = v === "auto" ? guideInfo.auto : v === "none" ? null : v;
+  $("guides").innerHTML = guideInfo.guides.map(g =>
+    `<div class="ref" title="${esc(g.name)}" style="background:#fff;${g.name === pick ? "outline:2px solid var(--accent)" : "opacity:.45"}">
+       <img src="${g.url}" alt="" style="object-fit:contain"><span class="tag">${esc(g.name.replaceAll("_", " "))}</span></div>`).join("");
+  $("guidehint").textContent = v === "none" ? "No guide: proportions are up to the model."
+    : pick ? `The reference will follow the ${pick.replaceAll("_", " ")} silhouette.`
+    : "Auto: no guide matches this prompt yet (type e.g. rifle, pistol, blade).";
+}
 
 let uploadScope = "type";
 async function loadRefs() {
@@ -276,6 +315,7 @@ $("form").onsubmit = async (e) => {
   if (!fd.get("real_world_size_m")) fd.set("real_world_size_m", "0");
   if (!$("image").files.length) fd.delete("image");
   if (!$("style_images").files.length) fd.delete("style_images");
+  if (!$("guide_image").files.length) fd.delete("guide_image");
   $("go").disabled = true;
   try {
     const r = await fetch("/api/jobs", { method: "POST", body: fd });

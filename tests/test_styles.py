@@ -246,7 +246,7 @@ def test_style_reference_is_passed_to_text_to_image(tmp_path, monkeypatch):
     ref = tmp_path / "concept.png"
     Image.new("RGB", (64, 64), (140, 98, 57)).save(ref)
 
-    def fake_t2i(prompt, seed, realism, style=None, style_images=None, style_strength=0.6):
+    def fake_t2i(prompt, seed, realism, style=None, style_images=None, style_strength=0.6, **_):
         seen["images"], seen["strength"] = style_images, style_strength
         img = Image.new("RGB", (400, 300), (128, 128, 128))
         ImageDraw.Draw(img).rectangle([80, 80, 320, 220], fill=(140, 98, 57))

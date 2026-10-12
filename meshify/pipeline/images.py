@@ -134,6 +134,8 @@ def build_negative_pair(style: "ResolvedStyle") -> tuple[str, str]:
 # IP-Adapter lets SDXL copy materials/colours from a style reference image.
 # The ViT-H variant keeps the image encoder small (~1.2 GB) for 12 GB cards.
 IP_ADAPTER_REPO = "h94/IP-Adapter"
+# Edge ControlNet that makes the reference follow a silhouette guide.
+CONTROLNET_MODEL = os.environ.get("MESHIFY_CONTROLNET", "diffusers/controlnet-canny-sdxl-1.0")
 IP_ADAPTER_WEIGHTS = os.environ.get("MESHIFY_IP_ADAPTER", "ip-adapter_sdxl_vit-h.safetensors")
 
 _t2i_pipe = None
@@ -170,7 +172,7 @@ def build_t2i_kwargs(model: str, prompt: str, realism: bool,
     return kwargs
 
 
-def _load_pipeline(model: str, with_ip_adapter: bool):
+def _load_pipeline(model: str, with_ip_adapter: bool, with_controlnet: bool = False):
     import torch
     from diffusers import AutoPipelineForText2Image
 
@@ -182,7 +184,14 @@ def _load_pipeline(model: str, with_ip_adapter: bool):
 
         extra["image_encoder"] = CLIPVisionModelWithProjection.from_pretrained(
             IP_ADAPTER_REPO, subfolder="models/image_encoder", torch_dtype=dtype)
-    pipe = AutoPipelineForText2Image.from_pretrained(model, torch_dtype=dtype, **extra)
+    if with_controlnet:
+        from diffusers import ControlNetModel, StableDiffusionXLControlNetPipeline
+
+        controlnet = ControlNetModel.from_pretrained(CONTROLNET_MODEL, torch_dtype=dtype)
+        pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
+            model, controlnet=controlnet, torch_dtype=dtype, **extra)
+    else:
+        pipe = AutoPipelineForText2Image.from_pretrained(model, torch_dtype=dtype, **extra)
     if with_ip_adapter:
         pipe.load_ip_adapter(IP_ADAPTER_REPO, subfolder="sdxl_models",
                              weight_name=IP_ADAPTER_WEIGHTS)
@@ -197,12 +206,18 @@ def _load_pipeline(model: str, with_ip_adapter: bool):
 def text_to_image(prompt: str, seed: int, realism: bool,
                   style: "ResolvedStyle | None" = None,
                   style_images: list[Image.Image] | None = None,
-                  style_strength: float = 0.6) -> Image.Image:
+                  style_strength: float = 0.6,
+                  guide: Image.Image | None = None,
+                  guide_strength: float = 0.6) -> Image.Image:
     """Generate a reference image. Needs `pip install meshify[text]` and a GPU.
 
     `style_images` (SDXL only) lend their colours and materials via IP-Adapter;
     several images are blended, so the faction's shared look wins over any one
     image's quirks. `style_strength` 0..1 sets how strongly.
+
+    `guide` (SDXL only) is an edge map from guides.control_image(): the image
+    follows that silhouette. `guide_strength` 0..1 sets how strictly; the
+    guide lets go for the last 20% of steps so fine detail can still form.
     """
     global _t2i_pipe, _t2i_key
     if importlib.util.find_spec("diffusers") is None:
@@ -217,10 +232,14 @@ def text_to_image(prompt: str, seed: int, realism: bool,
     if use_ip and "xl" not in model.lower():
         log.warning("Style reference images need an SDXL model (current: %s); ignoring it.", model)
         use_ip = False
-    key = (model, use_ip)
+    use_cn = guide is not None
+    if use_cn and "xl" not in model.lower():
+        log.warning("Silhouette guides need an SDXL model (current: %s); ignoring it.", model)
+        use_cn = False
+    key = (model, use_ip, use_cn)
     if _t2i_pipe is None or _t2i_key != key:
         release_text_to_image()
-        _t2i_pipe = _load_pipeline(model, use_ip)
+        _t2i_pipe = _load_pipeline(model, use_ip, use_cn)
         _t2i_key = key
 
     kwargs = build_t2i_kwargs(model, prompt, realism, style)
@@ -232,6 +251,10 @@ def text_to_image(prompt: str, seed: int, realism: bool,
         _t2i_pipe.set_ip_adapter_scale(scale)
         # One IP-Adapter, several images: [[img, img, ...]].
         kwargs["ip_adapter_image"] = [[img.convert("RGB") for img in style_images]]
+    if use_cn:
+        kwargs["image"] = guide
+        kwargs["controlnet_conditioning_scale"] = guide_strength
+        kwargs["control_guidance_end"] = 0.8
     return _t2i_pipe(**kwargs).images[0]
 
 
@@ -250,7 +273,8 @@ def remove_background(image: Image.Image) -> Image.Image:
     alpha = np.asarray(image)[..., 3]
     if alpha.min() < 250:
         return image  # already has transparency
-    if importlib.util.find_spec("rembg") is not None:
+    method = os.environ.get("MESHIFY_BACKGROUND", "auto")  # auto | rembg | flat
+    if method != "flat" and importlib.util.find_spec("rembg") is not None:
         from rembg import remove
 
         return remove(image).convert("RGBA")

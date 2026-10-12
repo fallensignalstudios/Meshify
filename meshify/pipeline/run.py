@@ -17,7 +17,7 @@ from ..backends import get_backend
 from ..config import DEFAULT_TARGET_FACES, DEFAULT_TEXTURE_SIZE, OUTPUT_ROOT, GenerationRequest
 from ..gpu import low_vram
 from ..styles import resolve as resolve_style
-from . import images, judge, materials
+from . import guides, images, judge, materials
 from .mesh import prepare_mesh
 
 log = logging.getLogger(__name__)
@@ -29,7 +29,25 @@ MAX_BORDER_CONTACT = 0.03  # above this share of the border, the object is cut o
 DEFAULT_CANDIDATES = int(os.environ.get("MESHIFY_CANDIDATES", "3"))
 
 
-def _pick_reference(req, style, style_images, progress, out, result):
+def _resolve_guide(req, style) -> Path | None:
+    """None/"auto": best name match for the prompt; "none": off; else a guide
+    name from the library or a path to an image."""
+    choice = (req.guide or "auto").strip()
+    available = style.guides if style else []
+    if choice.lower() == "none":
+        return None
+    if choice.lower() == "auto":
+        return guides.choose(available, req.prompt)
+    if Path(choice).is_file():
+        return Path(choice)
+    found = guides.find(available, choice)
+    if found is None:
+        names = ", ".join(p.stem for p in available) or "none for this faction/asset type"
+        raise ValueError(f"Unknown silhouette guide {choice!r}. Available: {names}")
+    return found
+
+
+def _pick_reference(req, style, style_images, progress, out, result, guide=None):
     """Generate text-to-image candidates and keep the best one.
 
     Each candidate is checked for cropping (object touching the frame edge)
@@ -57,7 +75,8 @@ def _pick_reference(req, style, style_images, progress, out, result):
         progress(f"Generating reference image {i + 1}/{wanted}", 0.05 + 0.1 * i / limit)
         image = images.text_to_image(req.prompt, seed, req.realism, style,
                                      style_images=style_images,
-                                     style_strength=req.style_strength)
+                                     style_strength=req.style_strength,
+                                     guide=guide, guide_strength=req.guide_strength)
         cut = images.remove_background(image)
         contact = images.border_contact(cut)
         if contact > MAX_BORDER_CONTACT:
@@ -143,8 +162,17 @@ def generate(req: GenerationRequest, progress: ProgressFn | None = None,
             fname = f"style_reference_{i}.png"
             img.save(out / fname)
             result.files[f"style_reference_{i}"] = fname
+        guide = None
+        guide_path = _resolve_guide(req, style)
+        if guide_path is not None:
+            width, height = images.ASPECT_SIZES[style.aspect if style else "square"]
+            guide = guides.control_image(Image.open(guide_path), width, height)
+            guide.save(out / "guide_control.png")
+            result.files["guide"] = "guide_control.png"
+            result.stats["guide"] = guide_path.stem
+            log.info("Following silhouette guide %s", guide_path.name)
         reference, isolated, attempts = _pick_reference(req, style, style_images,
-                                                        progress, out, result)
+                                                        progress, out, result, guide)
         if low_vram():
             images.release_text_to_image()
             judge.release()

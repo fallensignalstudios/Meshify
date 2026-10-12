@@ -18,6 +18,8 @@ if sys.version_info >= (3, 11):
 else:  # TRELLIS's default environment is Python 3.10
     import tomli as tomllib
 
+from ..pipeline.guides import list_guides  # noqa: E402
+
 BUILTIN_DIR = Path(__file__).parent
 log = logging.getLogger(__name__)
 
@@ -51,6 +53,7 @@ class ResolvedStyle:
     framing: str | None = None  # asset-type template, "{subject}" = the user's prompt
     aspect: str = "square"  # text-to-image frame: square, wide or tall
     references: list[Path] = field(default_factory=list)  # style images, most specific first
+    guides: list[Path] = field(default_factory=list)  # silhouette guides for this faction + type
     good: list[str] = field(default_factory=list)  # judge: what a good candidate looks like
     bad: list[str] = field(default_factory=list)  # judge: failure modes to avoid
 
@@ -175,6 +178,11 @@ def list_packs() -> list[dict]:
                 for k, v in data["categories"].items()
             },
             "references": _library_counts(data),
+            "guides": {
+                f"{f}/{c}": [g.stem for g in list_guides(data, f, c)]
+                for f in data["factions"] for c in data["categories"]
+                if list_guides(data, f, c)
+            },
         })
     return out
 
@@ -247,6 +255,7 @@ def resolve(pack: str | None, faction: str | None, category: str | None,
         pivot=cat.get("pivot", "bottom_center"),
         grid_m=cat.get("grid_m"),
         framing=cat.get("prompt"),
+        guides=list_guides(data, faction, category),
         good=[*info.get("good", []), *cat.get("good", [])],
         bad=[*info.get("bad", []), *cat.get("bad", [])],
         references=_dedupe([

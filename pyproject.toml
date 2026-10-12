@@ -35,4 +35,4 @@ meshify = "meshify.cli:main"
 include = ["meshify*"]
 
 [tool.setuptools.package-data]
-meshify = ["web/*", "web/vendor/*", "styles/*.toml"]
+meshify = ["web/*", "web/vendor/*", "styles/*.toml", "styles/references/**/*", "styles/guides/**/*"]

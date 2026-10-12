@@ -29,6 +29,8 @@ def _cmd_generate(args: argparse.Namespace) -> int:
         style_image_paths=args.style_image or [],
         style_strength=args.style_strength,
         candidates=args.candidates,
+        guide=args.guide,
+        guide_strength=args.guide_strength,
         asset_name=args.name,
     )
     result = generate(req)
@@ -78,6 +80,8 @@ def _cmd_styles(_: argparse.Namespace) -> int:
         print("  types:      " + ", ".join(
             f"{k} [{v['tris']} tris, {v['texture']}px]" for k, v in pack["categories"].items()))
         print("  conditions: " + ", ".join(pack["conditions"]))
+        if pack.get("guides"):
+            print("  guides:     " + ", ".join(f"{k} ({', '.join(v)})" for k, v in pack["guides"].items()))
         refs = pack.get("references", {})
         if refs:
             print("  references: " + ", ".join(f"{k} ({n})" for k, n in refs.items()))
@@ -116,6 +120,9 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--style-strength", type=float, default=0.6, help="0..1, default 0.6")
     g.add_argument("--candidates", type=int, help="Text-to-image candidates to generate and "
                    "judge, keeping the best (default 3; 1 = no judging)")
+    g.add_argument("--guide", help="Silhouette guide: auto (default, match the prompt), none, "
+                   "a guide name from the library, or an image path")
+    g.add_argument("--guide-strength", type=float, default=0.6, help="0..1, default 0.6")
     g.set_defaults(func=_cmd_generate)
 
     s = sub.add_parser("serve", help="Start the web UI")

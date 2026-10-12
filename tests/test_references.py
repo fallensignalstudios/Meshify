@@ -71,7 +71,7 @@ def test_library_references_flow_into_text_jobs(library, tmp_path, monkeypatch):
     add_reference("sovereign_call", "dominion", None, "look.png", _png())
     seen = {}
 
-    def fake_t2i(prompt, seed, realism, style=None, style_images=None, style_strength=0.6):
+    def fake_t2i(prompt, seed, realism, style=None, style_images=None, style_strength=0.6, **_):
         seen["n"] = len(style_images or [])
         img = Image.new("RGB", (400, 300), (128, 128, 128))
         ImageDraw.Draw(img).rectangle([80, 80, 320, 220], fill=(140, 98, 57))
