@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import trimesh
-from PIL import Image
+from PIL import Image, ImageDraw
 from scipy import ndimage
 
 if TYPE_CHECKING:
@@ -58,20 +58,40 @@ def _to_image(arr: np.ndarray, mode: str = "RGB") -> Image.Image:
     return Image.fromarray((np.clip(arr, 0, 1) * 255 + 0.5).astype(np.uint8), mode)
 
 
-def texture_mask(rgb: np.ndarray) -> np.ndarray:
-    """Texels that belong to the model. UV atlases (Hunyuan3D, TRELLIS) leave
-    empty space between islands, usually black or one flat fill colour; it must
-    not take part in brightness statistics or blurs."""
+EMISSIVE_EPS = 2 / 255  # smallest emission that survives 8-bit export
+
+
+def uv_occupancy(mesh: trimesh.Trimesh, size: tuple[int, int], dilate: int = 2) -> np.ndarray | None:
+    """Texels covered by the mesh's UV triangles: the real surface, including
+    hidden and edge-on parts. A small dilation keeps the seam padding that
+    texture filtering reads. None if the mesh has no UVs."""
+    visual = mesh.visual
+    if not isinstance(visual, trimesh.visual.TextureVisuals) or visual.uv is None:
+        return None
+    w, h = size
+    uv = np.asarray(visual.uv, dtype=np.float64)
+    pts = np.stack([uv[:, 0] * w, (1.0 - uv[:, 1]) * h], axis=1)
+    img = Image.new("L", (w, h), 0)
+    draw = ImageDraw.Draw(img)
+    for tri in pts[mesh.faces]:
+        draw.polygon([tuple(p) for p in tri], fill=255)
+    occupied = np.asarray(img) > 0
+    if dilate:
+        occupied = ndimage.binary_dilation(occupied, iterations=dilate)
+    return occupied
+
+
+def texture_mask(rgb: np.ndarray, occupancy: np.ndarray | None = None) -> np.ndarray:
+    """Texels that belong to the model, so empty atlas space stays out of
+    brightness statistics and blurs.
+
+    With the mesh's UV `occupancy` that's exact. Without it (texture-only
+    callers), only near-black texels are treated as empty: a common flat colour
+    can be a real panel (dark steel, grey paint), so colour frequency is never
+    used to decide."""
+    if occupancy is not None and occupancy.shape == rgb.shape[:2] and occupancy.any():
+        return occupancy
     used = rgb.max(axis=-1) > 0.02
-    flat = rgb.reshape(-1, 3)
-    sample = flat[np.random.default_rng(0).integers(0, len(flat), min(len(flat), 200_000))]
-    values, counts = np.unique((sample * 255).astype(np.uint8), axis=0, return_counts=True)
-    share = counts.max() / len(sample)
-    fill = values[counts.argmax()].astype(np.float32) / 255
-    # Padding is one exact, neutral (grey/black) colour over a big chunk of the
-    # atlas; a saturated flat colour is a real surface (e.g. a painted panel).
-    if 0.15 < share < 0.9 and fill.max() - fill.min() < 0.06:
-        used &= np.abs(rgb - fill).max(axis=-1) > 1.5 / 255
     if used.mean() < 0.01:  # nothing left? then treat the whole image as texture
         return np.ones(rgb.shape[:2], dtype=bool)
     return used
@@ -113,7 +133,15 @@ def height_from_albedo(rgb: np.ndarray, mask: np.ndarray | None = None) -> np.nd
     detail = ndimage.gaussian_filter(detail, 1.4)
     if mask is not None:
         detail *= mask
-    scale = np.percentile(np.abs(detail[mask] if mask is not None else detail), 99) + 1e-6
+    # Soft-threshold at the noise floor (robust MAD estimate): grain goes to
+    # exactly zero, so flat panels get flat (128, 128, 255) normals, while
+    # panel lines and real relief stay.
+    vals = detail[mask] if mask is not None else detail
+    noise = 1.4826 * np.median(np.abs(vals - np.median(vals))) if vals.size else 0.0
+    detail = np.sign(detail) * np.maximum(np.abs(detail) - 1.5 * noise, 0)
+    nonzero = np.abs(detail[mask] if mask is not None else detail)
+    nonzero = nonzero[nonzero > 0]
+    scale = (np.percentile(nonzero, 99) if nonzero.size else 0.0) + 1e-6
     return np.clip(0.5 + 0.5 * detail / scale, 0, 1)
 
 
@@ -338,27 +366,34 @@ def build_pbr_maps(base_color: Image.Image, delight_strength: float,
                    style: "MaterialStyle | None" = None,
                    reference: Image.Image | None = None,
                    projection: "Projection | None" = None,
-                   projection_strength: float = 0.85) -> PBRMaps:
+                   projection_strength: float = 0.85,
+                   occupancy: np.ndarray | None = None,
+                   normal_strength: float = 1.0) -> PBRMaps:
     """`reference` is the RGBA cut-out the mesh was made from. When given, the
     texture is colour-matched to it and materials are learned from it.
     `projection` (from projection.project) maps texels to reference pixels:
     surfaces facing the reference view take its colours directly, and its
-    glow is projected onto the mesh."""
+    glow is projected onto the mesh. `occupancy` (uv_occupancy) says which
+    texels are real surface. `normal_strength` scales the derived normal map
+    (0 = flat, useful to tell normal-map noise from real geometry)."""
     rgb = _to_float(base_color)
-    mask = texture_mask(rgb)
+    mask = texture_mask(rgb, occupancy)
+    exact_mask = occupancy is not None and mask is occupancy
     stats = {"texture_coverage": round(float(mask.mean()), 3), "colour_matched": False}
     ref_rgb = ref_mask = None
     if reference is not None:
         ref = np.asarray(reference.convert("RGBA"), dtype=np.float32) / 255.0
         ref_rgb, ref_mask = ref[..., :3], ref[..., 3] > 0.5
 
+    bake_rgb = rgb  # the backend's own texture, before any projection
     proj_weight = None
     if projection is not None and ref_rgb is not None and projection_strength > 0:
         proj_weight = projection.weight * projection_strength
         if proj_weight.shape == mask.shape:
             projected = projection.sample(ref_rgb)
             rgb = rgb * (1 - proj_weight[..., None]) + projected * proj_weight[..., None]
-            mask = mask | (proj_weight > 0.3)
+            if not exact_mask:  # heuristic mask: projected texels are surface too
+                mask = mask | (proj_weight > 0.3)
             stats["projected"] = round(float((projection.weight > 0.3).mean()), 3)
             stats["projection_iou"] = round(projection.iou, 2)
         else:
@@ -370,7 +405,9 @@ def build_pbr_maps(base_color: Image.Image, delight_strength: float,
     learned_glows: list[tuple[int, int, int]] = []
     if ref_rgb is not None:
         if ref_mask.sum() > 500 and mask.sum() > 500:
-            rgb = match_reference(rgb, mask, ref_rgb, ref_mask)
+            matched_bake = match_reference(bake_rgb, mask, ref_rgb, ref_mask)
+            rgb = matched_bake if rgb is bake_rgb else match_reference(rgb, mask, ref_rgb, ref_mask)
+            bake_rgb = matched_bake
             stats["colour_matched"] = True
             if style is not None:
                 m, n, g = learn_palette(ref_rgb, ref_mask, style)
@@ -379,7 +416,7 @@ def build_pbr_maps(base_color: Image.Image, delight_strength: float,
 
     albedo = delight(rgb, delight_strength, mask)
     height = height_from_albedo(albedo, mask)
-    normal_gl = normal_from_height(height)
+    normal_gl = normal_from_height(height, 1.2 * normal_strength)
     normal_dx = normal_gl.copy()
     normal_dx[..., 1] = 1.0 - normal_dx[..., 1]
     rough = roughness_from_albedo(albedo, height, mask)
@@ -394,11 +431,13 @@ def build_pbr_maps(base_color: Image.Image, delight_strength: float,
         # Machined metal reads smoother than paint or stone.
         rough = rough - 0.15 * metal + style.roughness_bias
         ao = 1.0 - (1.0 - ao) * style.ao_strength
-        emissive_mask = emissive_from_palette(rgb, glows, nonmetals, mask=mask)
+        # Glow the bake itself kept is found on the bake, not on the projection
+        # blend: projected glow is added separately, scaled by its strength.
+        emissive_mask = emissive_from_palette(bake_rgb, glows, nonmetals, mask=mask)
         if learned_glows:
             # A bake often dulls glow into paint; the reference's own glow
             # colours still find it by colour distance + local brightness.
-            dull = _pale_glow(rgb, mask, learned_glows, nonmetals) * mask
+            dull = _pale_glow(bake_rgb, mask, learned_glows, nonmetals) * mask
             if 0.0005 < (dull > 0.5).sum() / max(mask.sum(), 1) < 0.2:
                 emissive_mask = dull if emissive_mask is None else np.maximum(emissive_mask, dull)
         if proj_weight is not None:
@@ -406,16 +445,26 @@ def build_pbr_maps(base_color: Image.Image, delight_strength: float,
             # glow on the clean reference and project it instead.
             ref_glow = emissive_from_palette(ref_rgb, glows, list(style.nonmetals), mask=ref_mask)
             if ref_glow is not None:
-                projected_glow = projection.sample(ref_glow) * (projection.weight > 0.3)
+                # Continuous trust (texels facing the view squarely count fully,
+                # glancing ones partly, hidden/edge-on ones not at all), scaled
+                # by the requested strength: 0.01 gives a faint glow, 1 a full one.
+                trust = np.clip(projection.weight / 0.5, 0, 1)
+                projected_glow = projection.sample(ref_glow) * trust * projection_strength
                 emissive_mask = projected_glow if emissive_mask is None else \
                     np.maximum(emissive_mask, projected_glow)
-                if not (emissive_mask > 0.5).any():
-                    emissive_mask = None
+    if emissive_mask is not None and not (emissive_mask > EMISSIVE_EPS).any():
+        emissive_mask = None  # nothing that would survive 8-bit export
     rough = np.clip(rough, 0.05, 1.0)
     ao = np.clip(ao, 0.0, 1.0)
     stats["metallic_coverage"] = round(float((metal[mask] > 0.5).mean()), 3)
-    stats["emissive_coverage"] = (round(float((emissive_mask[mask] > 0.5).mean()), 4)
-                                  if emissive_mask is not None else 0.0)
+    # Coverage (how much of the surface emits at all) and intensity (how
+    # strongly) are reported separately: a dim but valid glow is still a glow.
+    if emissive_mask is not None:
+        lit = (emissive_mask > EMISSIVE_EPS) & mask
+        stats["emissive_coverage"] = round(float(lit.sum() / max(mask.sum(), 1)), 4)
+        stats["emissive_intensity"] = round(float(emissive_mask[lit].mean()), 3) if lit.any() else 0.0
+    else:
+        stats["emissive_coverage"] = stats["emissive_intensity"] = 0.0
 
     orm = np.dstack([ao, rough, metal])
     maps = PBRMaps(

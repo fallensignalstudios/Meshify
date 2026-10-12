@@ -85,3 +85,36 @@ The guide contains two forward tube-like protrusions. Review whether the lower o
 After the fixes, run pytest and repeat the recipe above. Record projection activation, emission pixels and GLB embedding, finite geometry, normal/ORM packing, and scale/pivot. Inspect both sides and UV seams. The full neural pipeline and local preview have been tested; Unreal import remains unverified.
 
 Detailed comparison JSON, job metadata, reference/candidate images, and the 47,004,684-byte latest asset bundle are retained on the owner's test machine. Local paths, logs, model files, and compatibility commits are not part of this documentation handoff.
+
+## Response from Caelis
+
+Thank you for the controlled comparison and the exact acceptance criteria. All three items are addressed, each with tests that follow your criteria (`tests/test_handoff.py`).
+
+**Priority 1: the projection slider now scales projected emission.**
+- Projected glow = reference glow × continuous trust (`clip(projection.weight / 0.5, 0, 1)`: square-on texels count fully, glancing ones partly, hidden or edge-on ones not at all) × `projection_strength`.
+- Glow the bake kept is detected on the bake itself (colour-matched, before projection blending), so projection can't re-detect its own colours at full strength. The two are combined with `max`.
+- The `> 0.5` existence check is gone. Emission is kept when any texel exceeds `EMISSIVE_EPS = 2/255`, the smallest value that survives 8-bit export.
+- The stats now separate `emissive_coverage` (share of surface emitting above the export threshold) from `emissive_intensity` (mean emission where lit).
+- Measured on the synthetic amber-strip fixture, strip intensity at strengths 0 / 0.01 / 0.25 / 0.85 / 1 is 0 / 0.009 / 0.19 / 0.65 / 0.76.
+- Tests cover: strictly increasing intensity, absent at 0, 0.01 above the export threshold, no glow on hidden or edge-on texels, bake glow surviving with projection disabled, and the GLB keeping the emissive texture with factor [1, 1, 1].
+
+**Priority 2: occupancy comes from the mesh's UV triangles.**
+- New `materials.uv_occupancy(mesh, size)` rasterizes every UV triangle, with a 2 px dilation for seam filtering. `run.py` passes it to `build_pbr_maps(occupancy=...)`.
+- The texture-only fallback no longer uses colour frequency at all. Only near-black texels count as empty.
+- Projection weight is never used as occupancy.
+- Tests cover:
+  - the fully occupied 60% #1a1a1c / 40% grey fixture keeps its dark-steel metalness, both with occupancy and in the fallback
+  - padding the same colour as a real panel stays excluded
+  - hidden and edge-on islands count as surface
+  - occupancy works with projection disabled and when projection is skipped for a poor silhouette, with colour matching still running
+
+**Surface noise.**
+- Derived detail is now soft-thresholded at a robust noise floor (MAD estimate), so film grain goes to exactly zero. Flat painted panels get flat (128, 128, 255) normals, and panel lines keep their relief (tested).
+- New `normal_strength` setting (`--normal-strength`, UI slider *Surface detail*). Set it to 0 for a perfectly flat normal map, to separate normal-map noise from real geometry as you suggested.
+- No mesh smoothing was added, so edges aren't rounded.
+
+**Guide's twin front tubes.** The Dominion `assault_rifle` guide comes from V's officer-rifle concept, which has twin muzzles by design, so it's left as is for now. If a single front tube is wanted for standard-issue rifles, removing the lower tube from `meshify/styles/guides/dominion/weapon/assault_rifle.png` is a one-line change. Just say so.
+
+**Your local compatibility changes** (Windows/Blackwell, fp16, offloading, prompt budget): if they're generally useful, please push them to this branch so everyone gets them and the test count lines up.
+
+To verify: run `pytest`, then repeat your recipe above and compare against job a14cff8173f4. Expect unchanged geometry and reference; emissive intensity that follows the slider; dark-steel panels keeping their metal; and smoother normals. Rendering with `--normal-strength 0` shows the bare geometry.

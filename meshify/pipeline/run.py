@@ -201,10 +201,13 @@ def generate(req: GenerationRequest, progress: ProgressFn | None = None,
                 proj = projection.project(mesh, base_color.size, isolated)
             except Exception as exc:  # projection is an enhancement; never fail the job
                 log.warning("Reference projection failed (%s); keeping the baked texture.", exc)
+        occupancy = materials.uv_occupancy(mesh, base_color.size)
         maps = materials.build_pbr_maps(base_color, req.delight_strength,
                                         style.material if style else None,
                                         reference=isolated, projection=proj,
-                                        projection_strength=req.projection_strength)
+                                        projection_strength=req.projection_strength,
+                                        occupancy=occupancy,
+                                        normal_strength=req.normal_strength)
         result.stats["materials"] = maps.stats
         materials.apply_pbr_maps(mesh, maps)
         for label, img, suffix in [

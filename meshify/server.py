@@ -172,6 +172,7 @@ async def create_job(
     realism: bool = Form(True),
     delight_strength: float = Form(0.6),
     projection_strength: float = Form(0.85),
+    normal_strength: float = Form(1.0),
     texture_size: int = Form(0),
     target_faces: str = Form(""),
     real_world_size_m: float = Form(0.0),
@@ -214,6 +215,7 @@ async def create_job(
             realism=realism,
             delight_strength=delight_strength,
             projection_strength=projection_strength,
+            normal_strength=normal_strength,
             texture_size=texture_size or None,
             # "" = use the preset; "0" = full density.
             target_faces=int(target_faces) if target_faces.strip() else None,

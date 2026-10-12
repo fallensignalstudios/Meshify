@@ -140,6 +140,8 @@
       <input id="delight_strength" name="delight_strength" type="range" min="0" max="1" step="0.05" value="0.6">
       <label for="projection_strength">Reference projection: <b id="pjv">0.85</b></label>
       <input id="projection_strength" name="projection_strength" type="range" min="0" max="1" step="0.05" value="0.85">
+      <label for="normal_strength">Surface detail (normal map): <b id="nsv">1.0</b></label>
+      <input id="normal_strength" name="normal_strength" type="range" min="0" max="2" step="0.1" value="1.0">
       <div class="hint">Paints the reference image back onto surfaces facing its view: crisper
         detail, true colours and glow. 0 keeps the 3D model's own texture.</div>
 
@@ -182,6 +184,7 @@ let shownJob = null;
 
 $("guide_strength").oninput = (e) => $("gsv").textContent = e.target.value;
 $("style_strength").oninput = (e) => $("ssv").textContent = e.target.value;
+$("normal_strength").oninput = (e) => $("nsv").textContent = (+e.target.value).toFixed(1);
 $("projection_strength").oninput = (e) => $("pjv").textContent = e.target.value;
 $("delight_strength").oninput = (e) => $("dlv").textContent = e.target.value;
 

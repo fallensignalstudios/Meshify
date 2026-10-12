@@ -35,14 +35,6 @@ def test_delight_does_not_darken_atlas_islands():
     assert out[mask].mean() / tex[mask].mean() > 0.9  # used to drop to ~0.63
 
 
-def test_neutral_padding_is_masked_but_flat_paint_is_not():
-    padded = np.full((100, 100, 3), 0.5, np.float32)  # grey padding fill
-    padded[10:60, 10:60] = np.random.default_rng(0).random((50, 50, 3))
-    assert not materials.texture_mask(padded)[80, 80] and materials.texture_mask(padded)[30, 30]
-    panel = np.zeros((100, 100, 3), np.float32) + (0.55, 0.38, 0.22)  # flat bronze paint
-    assert materials.texture_mask(panel).all()
-
-
 def test_baked_texture_recovers_reference_look():
     ref = Image.open(REF).convert("RGB")
     cutout = images.remove_background(ref)

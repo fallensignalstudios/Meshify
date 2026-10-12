@@ -45,6 +45,7 @@ class GenerationRequest:
     realism: bool = True  # photoreal prompt shaping + delighting + PBR maps
     delight_strength: float = 0.6  # 0 = keep baked lighting, 1 = flatten fully
     projection_strength: float = 0.85  # reference projected onto camera-facing surfaces (0 = off)
+    normal_strength: float = 1.0  # derived normal map strength (0 = flat, for diagnosis)
     texture_size: int | None = None
 
     # Mesh / export
@@ -65,6 +66,8 @@ class GenerationRequest:
             raise ValueError("guide_strength must be between 0 and 1.")
         if not 0.0 <= self.style_strength <= 1.0:
             raise ValueError("style_strength must be between 0 and 1.")
+        if not 0.0 <= self.normal_strength <= 3.0:
+            raise ValueError("normal_strength must be between 0 and 3.")
         if not 0.0 <= self.projection_strength <= 1.0:
             raise ValueError("projection_strength must be between 0 and 1.")
         if not 0.0 <= self.delight_strength <= 1.0:
