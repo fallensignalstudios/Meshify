@@ -118,6 +118,38 @@ The first use downloads the IP-Adapter weights (~1.5 GB, Apache-2.0). Style
 references apply to text prompts. When you upload a reference image *as the
 input*, it already defines the look.
 
+## Structure rules and candidates (one scope, sane proportions)
+
+Text-to-image is a dice roll: one seed gives a clean rifle, the next two
+scopes and a stock the size of a door. Two layers handle that:
+
+1. **Structure rules in the prompt.** An asset type can carry `structure`
+   (added to the prompt, e.g. "one integrated optic, single barrel,
+   believable proportions") and failure modes in its `negative` ("two scopes,
+   duplicate parts, extra barrels, malformed").
+2. **Candidates + judge.** For text prompts Meshify generates several
+   references (default 3; UI *Candidates*, `--candidates`, or
+   `MESHIFY_CANDIDATES`) and a CLIP judge (`openai/clip-vit-large-patch14`, MIT,
+   ~0.9 GB on first use) scores each against the asset type's `good` and `bad`
+   descriptions:
+
+   ```toml
+   [categories.weapon]
+   structure = "one integrated optic, single barrel, believable proportions"
+   good = ["a single well-proportioned {subject} with one scope"]
+   bad = ["a gun with two scopes", "a weapon with duplicated parts", "a malformed disproportionate weapon"]
+   ```
+
+   The pack's `[pack]` section holds defaults for every type (single complete
+   object, not a cropped close-up, no text). Cropped candidates are never
+   chosen. All candidates are saved in `candidates/`, and the job list shows
+   their scores with a ★ on the winner, so you can pick another by hand.
+
+CLIP is great at "one clean, complete object" and decent at obvious
+duplicates, but it isn't a precise counter, which is why the prompt carries
+the same rules. More candidates mean better odds but proportionally more time
+(SDXL takes a few seconds per image on an RTX 5070).
+
 ### Per-asset-type faction language (overrides)
 
 Generic faction words lose to strong nouns: "Dominion... assault rifle" still

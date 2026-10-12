@@ -152,6 +152,7 @@ async def create_job(
     condition: str = Form(""),
     style_images: list[UploadFile] = File(default_factory=list),
     style_strength: float = Form(0.6),
+    candidates: int = Form(0),
     asset_name: str = Form("asset"),
 ) -> dict:
     image_path = None
@@ -185,6 +186,7 @@ async def create_job(
             condition=condition or None,
             style_image_paths=style_paths,
             style_strength=style_strength,
+            candidates=candidates or None,
             asset_name=asset_name,
         )
         req.validate()

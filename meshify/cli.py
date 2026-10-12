@@ -28,6 +28,7 @@ def _cmd_generate(args: argparse.Namespace) -> int:
         condition=args.condition,
         style_image_paths=args.style_image or [],
         style_strength=args.style_strength,
+        candidates=args.candidates,
         asset_name=args.name,
     )
     result = generate(req)
@@ -113,6 +114,8 @@ def main(argv: list[str] | None = None) -> int:
                    "its colours/materials guide the text-to-image step (SDXL). "
                    "Default: the faction's reference library")
     g.add_argument("--style-strength", type=float, default=0.6, help="0..1, default 0.6")
+    g.add_argument("--candidates", type=int, help="Text-to-image candidates to generate and "
+                   "judge, keeping the best (default 3; 1 = no judging)")
     g.set_defaults(func=_cmd_generate)
 
     s = sub.add_parser("serve", help="Start the web UI")

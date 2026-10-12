@@ -59,8 +59,7 @@ ASPECT_SIZES = {"square": (1024, 1024), "wide": (1344, 768), "tall": (768, 1344)
 
 # Shorter framing used with style packs, leaving token room for faction detail.
 STYLE_FRAMING = (
-    "single object centered, entire object in frame with empty margin around it, "
-    "plain neutral grey background, "
+    "isolated on plain grey background, entire object in frame with margin, "
     "soft even studio lighting, physically based materials, sharp focus"
 )
 

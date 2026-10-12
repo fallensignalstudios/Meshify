@@ -37,6 +37,7 @@ class GenerationRequest:
     condition: str | None = None
     style_image_paths: list[str] = field(default_factory=list)  # replace the library refs
     style_strength: float = 0.6  # how strongly the reference's look is applied
+    candidates: int | None = None  # text-to-image candidates to judge (None = default 3)
 
     # Realism pipeline
     realism: bool = True  # photoreal prompt shaping + delighting + PBR maps
@@ -55,6 +56,8 @@ class GenerationRequest:
     def validate(self) -> None:
         if not self.prompt and not self.image_path:
             raise ValueError("Provide a prompt, an image, or both.")
+        if self.candidates is not None and not 1 <= self.candidates <= 8:
+            raise ValueError("candidates must be between 1 and 8.")
         if not 0.0 <= self.style_strength <= 1.0:
             raise ValueError("style_strength must be between 0 and 1.")
         if not 0.0 <= self.delight_strength <= 1.0:

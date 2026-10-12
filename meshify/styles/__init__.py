@@ -51,6 +51,8 @@ class ResolvedStyle:
     framing: str | None = None  # asset-type template, "{subject}" = the user's prompt
     aspect: str = "square"  # text-to-image frame: square, wide or tall
     references: list[Path] = field(default_factory=list)  # style images, most specific first
+    good: list[str] = field(default_factory=list)  # judge: what a good candidate looks like
+    bad: list[str] = field(default_factory=list)  # judge: failure modes to avoid
 
     def subject(self, prompt: str) -> str:
         """The user's prompt wrapped in the asset-type framing (framing first)."""
@@ -60,6 +62,12 @@ class ResolvedStyle:
         if "{subject}" in self.framing:
             return self.framing.replace("{subject}", prompt)
         return f"{prompt}, {self.framing}"
+
+    def checks(self, prompt: str) -> tuple[list[str], list[str]]:
+        """Judge texts with {subject} filled in."""
+        subject = prompt.strip().rstrip(".") or "object"
+        fill = lambda texts: [t.replace("{subject}", subject) for t in texts]
+        return fill(self.good), fill(self.bad)
 
     def apply_to_prompt(self, prompt: str) -> str:
         parts = [self.subject(prompt), *self.prompt_parts, *self.look_parts]
@@ -224,7 +232,8 @@ def resolve(pack: str | None, faction: str | None, category: str | None,
     return ResolvedStyle(
         # Order matters for 77-token CLIP models: faction look first, then framing.
         prompt_parts=[faction_prompt] if faction_prompt else [],
-        look_parts=[cond["prompt"]] if cond.get("prompt") else [],
+        # Condition, then asset-type structure rules (e.g. "one integrated optic").
+        look_parts=[p for p in (cond.get("prompt"), cat.get("structure")) if p],
         negative=negative,
         identity_negative=", ".join(n for n in [cat.get("negative"), fac.get("negative"),
                                                 override.get("negative")] if n),
@@ -238,6 +247,8 @@ def resolve(pack: str | None, faction: str | None, category: str | None,
         pivot=cat.get("pivot", "bottom_center"),
         grid_m=cat.get("grid_m"),
         framing=cat.get("prompt"),
+        good=[*info.get("good", []), *cat.get("good", [])],
+        bad=[*info.get("bad", []), *cat.get("bad", [])],
         references=_dedupe([
             *_pack_references(data, override.get("reference")),
             *library_references(data, faction, category, MAX_STYLE_REFERENCES),

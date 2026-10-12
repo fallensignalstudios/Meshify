@@ -146,6 +146,14 @@
           <input id="real_world_size_m" name="real_world_size_m" type="number" step="0.01" min="0" placeholder="auto"></div>
         <div><label for="seed">Seed</label><input id="seed" name="seed" type="number" value="42"></div>
       </div>
+      <div class="row">
+        <div><label for="candidates">Candidates</label>
+          <select id="candidates" name="candidates">
+            <option value="1">1 (fastest)</option><option value="2">2</option>
+            <option value="3" selected>3</option><option value="4">4 (best)</option></select></div>
+        <div class="hint" style="align-self:end">Text prompts: generate several references and
+          keep the one the judge rates most like a single, well-proportioned object.</div>
+      </div>
       <button id="go" type="submit">Generate</button>
     </form>
   </aside>
@@ -293,8 +301,14 @@ function esc(s) { return String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","
 async function refresh() {
   const jobs = await (await fetch("/api/jobs")).json();
   $("jobs").innerHTML = jobs.map(j => {
-    const files = j.files ? Object.entries(j.files).map(([k, f]) =>
+    const files = j.files ? Object.entries(j.files).filter(([k]) => !k.startsWith("candidate_")).map(([k, f]) =>
       `<a href="/api/jobs/${j.id}/files/${f}" download onclick="event.stopPropagation()">${esc(k)}</a>`).join("") : "";
+    const cands = j.stats && j.stats.candidates && j.stats.candidates.length > 1
+      ? `<div class="files">${j.stats.candidates.map((c, i) =>
+          `<a href="/api/jobs/${j.id}/files/candidates/candidate_${i + 1}.png" target="_blank"
+             onclick="event.stopPropagation()" title="seed ${c.seed}">${c.chosen ? "★ " : ""}#${i + 1}${
+             c.score !== null ? " " + Math.round(c.score * 100) + "%" : ""}${c.cropped ? " cropped" : ""}</a>`).join("")}</div>`
+      : "";
     const stats = j.stats ? ` · ${j.stats.faces.toLocaleString()} faces · ${j.stats.size_m.x} × ${j.stats.size_m.y} × ${j.stats.size_m.z} m · ${j.stats.seconds}s` : "";
     return `<div class="job ${j.status}" data-id="${j.id}">
       <div class="name">${esc(j.request.asset_name)} — ${esc(j.request.prompt || "image")}${
@@ -304,6 +318,7 @@ async function refresh() {
       <div class="stage">${esc(j.status === "error" ? j.error : j.stage)}${stats}</div><div></div>
       ${j.status === "running" || j.status === "queued" ? `<div class="bar"><i style="width:${j.progress * 100}%"></i></div>` : ""}
       ${files ? `<div class="files">${files}</div>` : ""}
+      ${cands}
     </div>`;
   }).join("");
   for (const el of $("jobs").querySelectorAll(".job"))

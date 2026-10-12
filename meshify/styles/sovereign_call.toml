@@ -13,8 +13,11 @@
 [pack]
 name = "Sovereign Call"
 id = "sovereign_call"
-render = "AAA game asset, stylized realism, grounded cinematic sci-fi, centuries of history"
+render = "AAA game asset, stylized realism, grounded cinematic sci-fi"
 negative = "text, letters, writing, logo, gibberish symbols, cartoon, toy"
+# Default judge checks for every asset type (asset types can add their own).
+good = ["a single complete {subject} on a plain background"]
+bad = ["a cropped close-up of part of an object", "several objects", "text and logos"]
 
 # ---------------------------------------------------------------- factions
 
@@ -154,7 +157,11 @@ pivot = "bottom_center"
 [categories.weapon]
 label = "Weapon"
 prompt = "full-length side profile of a complete fictional sci-fi {subject}, whole weapon end to end"
-negative = "AK-47, AR-15, real-world firearm, wood furniture, wooden grip, picatinny rails, civilian tactical, curved banana magazine, scavenged, improvised"
+negative = "two scopes, duplicate parts, extra barrels, malformed, AK-47, AR-15, real-world firearm, wood furniture, picatinny rails, banana magazine, scavenged"
+structure = "one integrated optic, single barrel, believable proportions"
+# The judge scores candidates against these (see docs/STYLES.md, "Candidates").
+good = ["a single well-proportioned {subject} with one scope"]
+bad = ["a gun with two scopes", "a weapon with duplicated parts", "a malformed disproportionate weapon"]
 aspect = "wide"
 tris = 20000
 texture = 2048
@@ -165,7 +172,11 @@ pivot = "center"
 [categories.hero_weapon]
 label = "Hero weapon"
 prompt = "full-length side profile of a complete legendary sci-fi {subject}, whole weapon end to end"
-negative = "AK-47, AR-15, real-world firearm, wood furniture, wooden grip, picatinny rails, civilian tactical, curved banana magazine, scavenged, improvised"
+negative = "two scopes, duplicate parts, extra barrels, malformed, AK-47, AR-15, real-world firearm, wood furniture, picatinny rails, banana magazine, scavenged"
+structure = "one integrated optic, single barrel, believable proportions"
+# The judge scores candidates against these (see docs/STYLES.md, "Candidates").
+good = ["a single well-proportioned {subject} with one scope"]
+bad = ["a gun with two scopes", "a weapon with duplicated parts", "a malformed disproportionate weapon"]
 aspect = "wide"
 tris = 40000
 texture = 4096
@@ -176,6 +187,10 @@ pivot = "center"
 [categories.armor]
 label = "Armor piece"
 prompt = "a single complete {subject}, separate armor piece, no body inside, whole piece visible"
+negative = "duplicate parts, malformed, multiple pieces"
+structure = "symmetrical, believable proportions"
+good = ["a single symmetrical {subject}"]
+bad = ["several armor pieces", "a malformed asymmetrical armor piece"]
 aspect = "square"
 tris = 15000
 texture = 2048
@@ -210,7 +225,7 @@ ao_strength = 1.0
 
 [conditions.frontier]
 label = "Frontier / campaign-worn"
-prompt = "campaign-worn but well maintained, scuffed edges, light dust, field repairs"
+prompt = "campaign-worn, well maintained, scuffed edges, light dust"
 roughness_offset = 0.12
 ao_strength = 1.3
 

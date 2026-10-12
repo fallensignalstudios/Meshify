@@ -17,7 +17,7 @@ from ..backends import get_backend
 from ..config import DEFAULT_TARGET_FACES, DEFAULT_TEXTURE_SIZE, OUTPUT_ROOT, GenerationRequest
 from ..gpu import low_vram
 from ..styles import resolve as resolve_style
-from . import images, materials
+from . import images, judge, materials
 from .mesh import prepare_mesh
 
 log = logging.getLogger(__name__)
@@ -26,6 +26,71 @@ ProgressFn = Callable[[str, float], None]
 
 MAX_REFERENCE_ATTEMPTS = int(os.environ.get("MESHIFY_REFERENCE_ATTEMPTS", "3"))
 MAX_BORDER_CONTACT = 0.03  # above this share of the border, the object is cut off
+DEFAULT_CANDIDATES = int(os.environ.get("MESHIFY_CANDIDATES", "3"))
+
+
+def _pick_reference(req, style, style_images, progress, out, result):
+    """Generate text-to-image candidates and keep the best one.
+
+    Each candidate is checked for cropping (object touching the frame edge)
+    and, when the judge can run, scored against the asset type's good/bad
+    descriptions (e.g. "one scope" vs "two scopes"). Without a judge, the
+    first uncropped candidate wins, so nothing extra is generated.
+    """
+    wanted = max(1, req.candidates or DEFAULT_CANDIDATES)
+    use_judge = wanted > 1 and judge.available()
+    if not use_judge:
+        wanted = 1
+    good, bad = style.checks(req.prompt) if style else ([], [])
+    subject = (req.prompt or "object").strip()
+    good = good or [t.replace("{subject}", subject) for t in judge.DEFAULT_GOOD]
+    bad = bad or list(judge.DEFAULT_BAD)
+
+    cands = []  # dicts: seed, image, cutout, contact
+    limit = max(wanted, MAX_REFERENCE_ATTEMPTS)
+    for i in range(limit):
+        uncropped = [c for c in cands if c["contact"] <= MAX_BORDER_CONTACT]
+        # Stop once we have enough candidates and at least one isn't cropped.
+        if len(cands) >= wanted and uncropped:
+            break
+        seed = req.seed + i
+        progress(f"Generating reference image {i + 1}/{wanted}", 0.05 + 0.1 * i / limit)
+        image = images.text_to_image(req.prompt, seed, req.realism, style,
+                                     style_images=style_images,
+                                     style_strength=req.style_strength)
+        cut = images.remove_background(image)
+        contact = images.border_contact(cut)
+        if contact > MAX_BORDER_CONTACT:
+            log.warning("Candidate %d (seed %d) is cropped (%.0f%% of the border is object)",
+                        i + 1, seed, contact * 100)
+        cands.append({"seed": seed, "image": image, "cutout": cut, "contact": contact})
+
+    scores = None
+    if use_judge and len(cands) > 1:
+        progress("Judging candidates", 0.17)
+        scores = judge.score([c["image"] for c in cands], good, bad)
+    for i, c in enumerate(cands):
+        c["score"] = scores[i] if scores else None
+        cropped = c["contact"] > MAX_BORDER_CONTACT
+        # Cropping is disqualifying; among the rest the judge decides, else the
+        # earliest uncropped one wins.
+        c["rank"] = (0 if cropped else 1, c["score"] if scores else -i, -c["contact"])
+
+    best = max(cands, key=lambda c: c["rank"])
+    if best["contact"] > MAX_BORDER_CONTACT:
+        log.warning("All %d references were cropped; using the least-cropped one. "
+                    "Try rewording the prompt or another seed.", len(cands))
+    if len(cands) > 1:
+        (out / "candidates").mkdir(exist_ok=True)
+        for i, c in enumerate(cands, 1):
+            fname = f"candidates/candidate_{i}.png"
+            c["image"].save(out / fname)
+            result.files[f"candidate_{i}"] = fname
+    result.stats["candidates"] = [
+        {"seed": c["seed"], "score": None if c["score"] is None else round(c["score"], 3),
+         "cropped": c["contact"] > MAX_BORDER_CONTACT, "chosen": c is best}
+        for c in cands]
+    return best["image"], best["cutout"], len(cands)
 
 
 @dataclass
@@ -70,8 +135,6 @@ def generate(req: GenerationRequest, progress: ProgressFn | None = None,
         progress("Removing background", 0.2)
         isolated = images.remove_background(reference)
     else:
-        # Text-to-image sometimes zooms into a detail. If the object runs off the
-        # edge of the frame, try the next seed; keep the least-cropped result.
         # Uploaded style images replace the library; otherwise the faction's
         # library references (most specific first) are used automatically.
         ref_paths = req.style_image_paths or (style.references if style else [])
@@ -80,28 +143,11 @@ def generate(req: GenerationRequest, progress: ProgressFn | None = None,
             fname = f"style_reference_{i}.png"
             img.save(out / fname)
             result.files[f"style_reference_{i}"] = fname
-        best = None
-        for attempts in range(1, MAX_REFERENCE_ATTEMPTS + 1):
-            seed = req.seed + attempts - 1
-            progress(f"Generating photoreal reference image (try {attempts})", 0.05)
-            candidate = images.text_to_image(req.prompt, seed, req.realism, style,
-                                             style_images=style_images,
-                                             style_strength=req.style_strength)
-            progress("Removing background", 0.15)
-            cut = images.remove_background(candidate)
-            contact = images.border_contact(cut)
-            if best is None or contact < best[2]:
-                best = (candidate, cut, contact)
-            if contact <= MAX_BORDER_CONTACT:
-                break
-            log.warning("Reference %d is cropped (%.0f%% of the border is object); retrying "
-                        "with seed %d", attempts, contact * 100, seed + 1)
-        reference, isolated, contact = best
-        if contact > MAX_BORDER_CONTACT:
-            log.warning("All %d references were cropped; using the least-cropped one. "
-                        "Try rewording the prompt or another seed.", attempts)
+        reference, isolated, attempts = _pick_reference(req, style, style_images,
+                                                        progress, out, result)
         if low_vram():
             images.release_text_to_image()
+            judge.release()
     reference.save(out / "reference.png")
     result.files["reference"] = "reference.png"
 
@@ -161,6 +207,7 @@ def generate(req: GenerationRequest, progress: ProgressFn | None = None,
 
     extents = mesh.extents
     result.stats = {
+        **result.stats,
         "faces": int(len(mesh.faces)),
         "vertices": int(len(mesh.vertices)),
         "size_m": {"x": round(float(extents[0]), 3), "y": round(float(extents[1]), 3),

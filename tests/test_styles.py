@@ -258,3 +258,69 @@ def test_style_reference_is_passed_to_text_to_image(tmp_path, monkeypatch):
     result = generate(req, output_root=tmp_path / "out")
     assert [i.size for i in seen["images"]] == [(64, 64)] and seen["strength"] == 0.8
     assert (result.output_dir / result.files["style_reference_1"]).is_file()
+
+
+def _fake_t2i_factory(boxes):
+    """Each call returns the next test image; boxes outside the frame = cropped."""
+    calls = []
+
+    def fake(prompt, seed, realism, style=None, **_):
+        box = boxes[len(calls)]
+        calls.append(seed)
+        img = Image.new("RGB", (400, 300), (128, 128, 128))
+        ImageDraw.Draw(img).rectangle(box, fill=(140, 98, 57))
+        return img
+
+    def fake_bg(img):
+        rgba = np.asarray(img.convert("RGBA")).copy()
+        rgba[..., 3] = np.where((rgba[..., :3] == 128).all(-1), 0, 255)
+        return Image.fromarray(rgba, "RGBA")
+
+    return fake, fake_bg, calls
+
+
+def test_judge_picks_the_best_uncropped_candidate(tmp_path, monkeypatch):
+    from meshify.pipeline import judge
+
+    ok = [80, 80, 320, 220]
+    fake, fake_bg, calls = _fake_t2i_factory([ok, [0, 0, 399, 299], ok])
+    seen = {}
+
+    def fake_score(imgs, good, bad):
+        seen["good"], seen["bad"] = good, bad
+        return [0.30, 0.99, 0.70]  # the cropped one scores highest but must lose
+
+    monkeypatch.setattr(images, "text_to_image", fake)
+    monkeypatch.setattr(images, "remove_background", fake_bg)
+    monkeypatch.setattr(judge, "available", lambda: True)
+    monkeypatch.setattr(judge, "score", fake_score)
+    req = GenerationRequest(prompt="heavy assault rifle", backend="dummy", seed=10,
+                            faction="dominion", category="weapon", texture_size=512, candidates=3)
+    result = generate(req, output_root=tmp_path)
+    assert calls == [10, 11, 12]
+    chosen = [c for c in result.stats["candidates"] if c["chosen"]]
+    assert chosen[0]["seed"] == 12 and result.stats["candidates"][1]["cropped"]
+    assert any("one scope" in g for g in seen["good"])
+    assert "a gun with two scopes" in seen["bad"]
+    assert (result.output_dir / result.files["candidate_2"]).is_file()
+
+
+def test_without_a_judge_only_one_candidate_is_made(tmp_path, monkeypatch):
+    from meshify.pipeline import judge
+
+    fake, fake_bg, calls = _fake_t2i_factory([[80, 80, 320, 220]] * 3)
+    monkeypatch.setattr(images, "text_to_image", fake)
+    monkeypatch.setattr(images, "remove_background", fake_bg)
+    monkeypatch.setattr(judge, "available", lambda: False)
+    req = GenerationRequest(prompt="rifle", backend="dummy", faction="dominion",
+                            category="weapon", texture_size=512, candidates=3)
+    generate(req, output_root=tmp_path)
+    assert len(calls) == 1
+
+
+def test_weapon_prompts_carry_structure_rules():
+    style = resolve(None, "dominion", "weapon", "maintained")
+    _, look = images.build_prompt_pair("heavy assault rifle", True, style)
+    assert "one integrated optic" in look and "believable proportions" in look
+    first_neg, _ = images.build_negative_pair(style)
+    assert "two scopes" in first_neg and "duplicate parts" in first_neg
