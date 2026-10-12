@@ -138,6 +138,10 @@
       <label class="check"><input type="checkbox" id="realism" checked> Realism pass (photoreal + PBR)</label>
       <label for="delight_strength">Remove baked lighting: <b id="dlv">0.6</b></label>
       <input id="delight_strength" name="delight_strength" type="range" min="0" max="1" step="0.05" value="0.6">
+      <label for="projection_strength">Reference projection: <b id="pjv">0.85</b></label>
+      <input id="projection_strength" name="projection_strength" type="range" min="0" max="1" step="0.05" value="0.85">
+      <div class="hint">Paints the reference image back onto surfaces facing its view: crisper
+        detail, true colours and glow. 0 keeps the 3D model's own texture.</div>
 
       <div class="row">
         <div><label for="texture_size">Texture</label>
@@ -178,6 +182,7 @@ let shownJob = null;
 
 $("guide_strength").oninput = (e) => $("gsv").textContent = e.target.value;
 $("style_strength").oninput = (e) => $("ssv").textContent = e.target.value;
+$("projection_strength").oninput = (e) => $("pjv").textContent = e.target.value;
 $("delight_strength").oninput = (e) => $("dlv").textContent = e.target.value;
 
 fetch("/api/backends").then(r => r.json()).then(list => {

@@ -77,6 +77,20 @@ them, usually darker and duller than the reference image. Meshify:
   classifying it with the faction swatches) and finds those in the texture,
   so a darker bake of bronze still reads as bronze.
 
+- **projects the reference back onto the mesh** (*Reference projection*,
+  default 0.85, `--projection`). Meshify finds the mesh's orientation by
+  matching its silhouette to the reference cut-out, then gives every texel
+  that faces the reference view the reference's own colour, weighted by how
+  squarely it faces the camera and skipping hidden surfaces. The far side
+  gets the mirrored view, and surfaces seen edge-on keep the bake. Glow is
+  found on the clean reference and projected too, because texture painters
+  turn glowing channels into dull paint. If the silhouette doesn't match
+  (IoU < 0.6), projection is skipped.
+- finds glow by **hue family** for vivid colours (amber, cyan, violet): light-
+  like seeds (very bright, vivid, brighter than their surroundings) grow into
+  connected parts of the same light, so fiery flecks inside a channel count
+  but glints on bronze trim don't. Pale glows (white-gold) use colour distance.
+
 `meshify.json` (and the job list) report `metallic_coverage` and
 `emissive_coverage`, so you can spot a texture that lost its materials.
 

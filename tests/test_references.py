@@ -180,7 +180,9 @@ def test_real_reformation_white_armour_is_not_mistaken_for_glow():
     import numpy as np
 
     _, alpha, maps = _maps_on("reformation/armor/trooper.png", "reformation")
-    glow = np.asarray(maps.emissive_mask) / 255 > 0.5 if maps.emissive_mask else np.zeros(1)
+    if maps.emissive_mask is None:
+        return  # no glow at all: certainly not mistaken for glow
+    glow = np.asarray(maps.emissive_mask) / 255 > 0.5
     assert glow[alpha].mean() < 0.05
 
 
@@ -193,8 +195,9 @@ def test_real_ancient_art_ivory_is_not_metal_or_glow():
     ivory = (r > 170) & (abs(r - g) < 20) & (abs(g - b) < 30) & alpha
     gold = (r > g * 1.08) & (g > b * 1.15) & (r > 120) & alpha
     assert metal[gold].mean() > metal[ivory].mean() + 0.2
-    glow = np.asarray(maps.emissive_mask) / 255 > 0.5 if maps.emissive_mask else np.zeros(1)
-    assert glow[alpha].mean() < 0.02  # edge highlights on ivory are not lights
+    if maps.emissive_mask is not None:
+        glow = np.asarray(maps.emissive_mask) / 255 > 0.5
+        assert glow[alpha].mean() < 0.02  # edge highlights on ivory are not lights
 
 
 def test_real_eclipse_art_violet_glows_and_flesh_is_not_metal():

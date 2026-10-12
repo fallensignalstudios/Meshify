@@ -18,6 +18,7 @@ def _cmd_generate(args: argparse.Namespace) -> int:
         seed=args.seed,
         realism=not args.no_realism,
         delight_strength=args.delight,
+        projection_strength=args.projection,
         texture_size=args.texture_size,
         target_faces=args.faces,
         real_world_size_m=args.size,
@@ -102,6 +103,8 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--seed", type=int, default=42)
     g.add_argument("--no-realism", action="store_true", help="Skip photoreal shaping + PBR pass")
     g.add_argument("--delight", type=float, default=0.6, help="0..1, remove baked lighting")
+    g.add_argument("--projection", type=float, default=0.85, help="0..1, project the reference "
+                   "image onto camera-facing surfaces (0 = keep the backend's texture)")
     g.add_argument("--texture-size", type=int, choices=[512, 1024, 2048, 4096],
                    help="Default: from --type preset, else 2048")
     g.add_argument("--faces", type=int, help="Triangle budget, 0 = full density "

@@ -31,6 +31,7 @@ from scipy import ndimage
 
 if TYPE_CHECKING:
     from ..styles import MaterialStyle
+    from .projection import Projection
 
 LUMA = np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
 
@@ -107,14 +108,16 @@ def height_from_albedo(rgb: np.ndarray, mask: np.ndarray | None = None) -> np.nd
     """Fine surface detail as a 0..1 height field (high-pass luminance)."""
     luma = rgb @ LUMA
     detail = luma - _blur(luma, 6, mask)
-    detail = ndimage.gaussian_filter(detail, 0.8)
+    # Generated textures are grainy; smooth before deriving normals or the
+    # grain reads as a rough, pitted surface.
+    detail = ndimage.gaussian_filter(detail, 1.4)
     if mask is not None:
         detail *= mask
     scale = np.percentile(np.abs(detail[mask] if mask is not None else detail), 99) + 1e-6
     return np.clip(0.5 + 0.5 * detail / scale, 0, 1)
 
 
-def normal_from_height(height: np.ndarray, strength: float = 2.0) -> np.ndarray:
+def normal_from_height(height: np.ndarray, strength: float = 1.2) -> np.ndarray:
     dx = ndimage.sobel(height, axis=1)
     dy = ndimage.sobel(height, axis=0)
     # Image rows go down; flip so +Y points up in texture space (OpenGL).
@@ -246,32 +249,84 @@ def metallic_from_palette(albedo: np.ndarray, metals: list[tuple[int, int, int]]
     return ndimage.gaussian_filter(metal, 1.0).astype(np.float32)
 
 
-def emissive_from_palette(rgb: np.ndarray, colors: list[tuple[int, int, int]],
-                          nonmetals: list[tuple[int, int, int]] | None = None,
-                          max_coverage: float = 0.2,
-                          mask: np.ndarray | None = None) -> np.ndarray | None:
-    """Find glowing channels: near one of the faction's energy colours AND brighter
-    than their surroundings. The local-contrast test stops flat ivory or white
-    panels from being mistaken for white-gold glow; `nonmetals` (ivory, pearl,
-    white paint) also veto pixels that are closer to a surface colour than to a
-    glow colour, which catches bright edge highlights on pale armour."""
-    if not colors:
-        return None
+def _hue_saturation(rgb: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    mx, mn = rgb.max(axis=-1), rgb.min(axis=-1)
+    sat = (mx - mn) / np.maximum(mx, 1e-6)
+    r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+    hue = (np.degrees(np.arctan2(np.sqrt(3) * (g - b), 2 * r - g - b)) + 360) % 360
+    return hue, sat, mx
+
+
+def _vivid_glow(rgb: np.ndarray, mask: np.ndarray, hues: list[float]) -> np.ndarray:
+    """Glow in a vivid colour family (amber, cyan, violet), found as regions:
+
+    - seeds: pixels that look like light (very bright, vivid, in the hue family,
+      clearly brighter than their surroundings), in clusters of real size;
+    - growth: from the seeds into connected, vivid pixels of the same family,
+      which picks up the darker, fiery parts of a channel (hysteresis);
+    - holes inside a light are filled.
+
+    Specular glints on bronze or red trim never seed, so they don't leak in."""
+    k = min(rgb.shape[:2]) / 768  # tuned at 768 px; scale structuring sizes
+    it = lambda n: max(1, round(n * k))
+    hue, sat, mx = _hue_saturation(rgb)
+    hd = np.min([np.minimum(np.abs(hue - h), 360 - np.abs(hue - h)) for h in hues], axis=0)
+    luma = rgb @ LUMA
+    lifted = luma - _blur(luma, 25 * k, mask)
+    seeds = (hd < 30) & (sat > 0.45) & (mx > 0.8) & (lifted > 0.12) & mask
+    labels, n = ndimage.label(seeds)
+    if n == 0:
+        return np.zeros(mask.shape, bool)
+    sizes = ndimage.sum(seeds, labels, range(1, n + 1))
+    seeds = np.isin(labels, 1 + np.flatnonzero(sizes >= 30 * k * k))
+    # Bronze shares amber's hue, so growth also needs to be a little brighter
+    # than its surroundings and must stay near a seed (no flooding a panel).
+    near_seed = ndimage.binary_dilation(seeds, iterations=it(14))
+    family = ((hd < 40) & (sat > 0.5) & (mx > 0.4) & (lifted > 0.03) & near_seed & mask) | seeds
+    family = ndimage.binary_closing(family, iterations=it(2))
+    labels, _ = ndimage.label(family)
+    keep = np.unique(labels[seeds])
+    grown = np.isin(labels, keep[keep > 0])
+    return ndimage.binary_fill_holes(ndimage.binary_closing(grown, iterations=it(4))) & mask
+
+
+def _pale_glow(rgb: np.ndarray, mask: np.ndarray | None, colors, nonmetals) -> np.ndarray:
+    """Glow in a pale colour (white-gold): near the colour AND brighter than its
+    surroundings; `nonmetals` (ivory, pearl) veto bright edge highlights."""
     luma = rgb @ LUMA
     lifted = luma - _blur(luma, 8, mask)
     lab = srgb_to_lab(rgb)
     dist = _distance_to(lab, colors)
     near = np.clip(1.0 - (dist - 15.0) / 20.0, 0, 1)
-    # Brightest channel, not luminance: a vivid violet glow has low luminance.
-    bright = rgb.max(axis=-1) > 0.6
-    glow = near * np.clip((lifted - 0.04) / 0.12, 0, 1) * bright
+    glow = near * np.clip((lifted - 0.04) / 0.12, 0, 1) * (rgb.max(axis=-1) > 0.6)
     if nonmetals:
         glow *= np.clip(0.5 + (_distance_to(lab, nonmetals) - dist) / 8.0, 0, 1)
-    glow = ndimage.gaussian_filter(glow.astype(np.float32), 0.8)
-    if mask is not None:
-        glow *= mask
-    area = mask.sum() if mask is not None else glow.size
-    coverage = float((glow > 0.5).sum() / max(area, 1))
+    return ndimage.gaussian_filter(glow.astype(np.float32), 0.8)
+
+
+def emissive_from_palette(rgb: np.ndarray, colors: list[tuple[int, int, int]],
+                          nonmetals: list[tuple[int, int, int]] | None = None,
+                          max_coverage: float = 0.2,
+                          mask: np.ndarray | None = None) -> np.ndarray | None:
+    """Glow mask (0..1) for a faction's energy colours, or None if there's none.
+
+    Vivid colours are found by hue family as connected light regions; pale
+    colours (white-gold) by colour distance plus local brightness."""
+    if not colors:
+        return None
+    area_mask = mask if mask is not None else np.ones(rgb.shape[:2], bool)
+    arr = np.array(colors, dtype=np.float32) / 255
+    hue, sat, _ = _hue_saturation(arr[None])
+    vivid = [float(h) for h, s_ in zip(hue[0], sat[0]) if s_ >= 0.35]
+    pale = [c for c, s_ in zip(colors, sat[0]) if s_ < 0.35]
+    glow = np.zeros(rgb.shape[:2], np.float32)
+    if vivid:
+        glow = np.maximum(glow, ndimage.gaussian_filter(
+            _vivid_glow(rgb, area_mask, vivid).astype(np.float32), 0.8))
+    if pale:
+        glow = np.maximum(glow, _pale_glow(rgb, mask, pale, nonmetals))
+    glow *= area_mask
+    coverage = float((glow > 0.5).sum() / max(area_mask.sum(), 1))
     if coverage < 0.0005:
         return None  # no glow found
     if coverage > max_coverage:
@@ -281,25 +336,45 @@ def emissive_from_palette(rgb: np.ndarray, colors: list[tuple[int, int, int]],
 
 def build_pbr_maps(base_color: Image.Image, delight_strength: float,
                    style: "MaterialStyle | None" = None,
-                   reference: Image.Image | None = None) -> PBRMaps:
+                   reference: Image.Image | None = None,
+                   projection: "Projection | None" = None,
+                   projection_strength: float = 0.85) -> PBRMaps:
     """`reference` is the RGBA cut-out the mesh was made from. When given, the
-    texture is colour-matched to it and materials are learned from it."""
+    texture is colour-matched to it and materials are learned from it.
+    `projection` (from projection.project) maps texels to reference pixels:
+    surfaces facing the reference view take its colours directly, and its
+    glow is projected onto the mesh."""
     rgb = _to_float(base_color)
     mask = texture_mask(rgb)
     stats = {"texture_coverage": round(float(mask.mean()), 3), "colour_matched": False}
+    ref_rgb = ref_mask = None
+    if reference is not None:
+        ref = np.asarray(reference.convert("RGBA"), dtype=np.float32) / 255.0
+        ref_rgb, ref_mask = ref[..., :3], ref[..., 3] > 0.5
+
+    proj_weight = None
+    if projection is not None and ref_rgb is not None and projection_strength > 0:
+        proj_weight = projection.weight * projection_strength
+        if proj_weight.shape == mask.shape:
+            projected = projection.sample(ref_rgb)
+            rgb = rgb * (1 - proj_weight[..., None]) + projected * proj_weight[..., None]
+            mask = mask | (proj_weight > 0.3)
+            stats["projected"] = round(float((projection.weight > 0.3).mean()), 3)
+            stats["projection_iou"] = round(projection.iou, 2)
+        else:
+            proj_weight = None
 
     metals = list(style.metals) if style else []
     nonmetals = list(style.nonmetals) if style else []
     glows = list(style.emissive) if style else []
-    if reference is not None:
-        ref = np.asarray(reference.convert("RGBA"), dtype=np.float32) / 255.0
-        ref_rgb, ref_mask = ref[..., :3], ref[..., 3] > 0.5
+    learned_glows: list[tuple[int, int, int]] = []
+    if ref_rgb is not None:
         if ref_mask.sum() > 500 and mask.sum() > 500:
             rgb = match_reference(rgb, mask, ref_rgb, ref_mask)
             stats["colour_matched"] = True
             if style is not None:
                 m, n, g = learn_palette(ref_rgb, ref_mask, style)
-                metals, nonmetals, glows = metals + m, nonmetals + n, glows + g
+                metals, nonmetals, learned_glows = metals + m, nonmetals + n, g
                 stats["learned_colours"] = {"metal": len(m), "nonmetal": len(n), "glow": len(g)}
 
     albedo = delight(rgb, delight_strength, mask)
@@ -320,6 +395,22 @@ def build_pbr_maps(base_color: Image.Image, delight_strength: float,
         rough = rough - 0.15 * metal + style.roughness_bias
         ao = 1.0 - (1.0 - ao) * style.ao_strength
         emissive_mask = emissive_from_palette(rgb, glows, nonmetals, mask=mask)
+        if learned_glows:
+            # A bake often dulls glow into paint; the reference's own glow
+            # colours still find it by colour distance + local brightness.
+            dull = _pale_glow(rgb, mask, learned_glows, nonmetals) * mask
+            if 0.0005 < (dull > 0.5).sum() / max(mask.sum(), 1) < 0.2:
+                emissive_mask = dull if emissive_mask is None else np.maximum(emissive_mask, dull)
+        if proj_weight is not None:
+            # Texture painters turn glowing channels into dull paint; find the
+            # glow on the clean reference and project it instead.
+            ref_glow = emissive_from_palette(ref_rgb, glows, list(style.nonmetals), mask=ref_mask)
+            if ref_glow is not None:
+                projected_glow = projection.sample(ref_glow) * (projection.weight > 0.3)
+                emissive_mask = projected_glow if emissive_mask is None else \
+                    np.maximum(emissive_mask, projected_glow)
+                if not (emissive_mask > 0.5).any():
+                    emissive_mask = None
     rough = np.clip(rough, 0.05, 1.0)
     ao = np.clip(ao, 0.0, 1.0)
     stats["metallic_coverage"] = round(float((metal[mask] > 0.5).mean()), 3)

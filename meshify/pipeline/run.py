@@ -17,7 +17,7 @@ from ..backends import get_backend
 from ..config import DEFAULT_TARGET_FACES, DEFAULT_TEXTURE_SIZE, OUTPUT_ROOT, GenerationRequest
 from ..gpu import low_vram
 from ..styles import resolve as resolve_style
-from . import guides, images, judge, materials
+from . import guides, images, judge, materials, projection
 from .mesh import prepare_mesh
 
 log = logging.getLogger(__name__)
@@ -194,9 +194,17 @@ def generate(req: GenerationRequest, progress: ProgressFn | None = None,
     base_color = materials.extract_base_color(mesh)
     if req.realism and base_color is not None:
         progress("Building PBR materials (delight, normal, roughness, AO)", 0.75)
+        proj = None
+        if req.projection_strength > 0:
+            progress("Projecting the reference onto the mesh", 0.72)
+            try:
+                proj = projection.project(mesh, base_color.size, isolated)
+            except Exception as exc:  # projection is an enhancement; never fail the job
+                log.warning("Reference projection failed (%s); keeping the baked texture.", exc)
         maps = materials.build_pbr_maps(base_color, req.delight_strength,
                                         style.material if style else None,
-                                        reference=isolated)
+                                        reference=isolated, projection=proj,
+                                        projection_strength=req.projection_strength)
         result.stats["materials"] = maps.stats
         materials.apply_pbr_maps(mesh, maps)
         for label, img, suffix in [
