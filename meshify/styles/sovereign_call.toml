@@ -27,8 +27,9 @@ prompt = "Dominion imperial sci-fi, Roman-Byzantine design, burnished bronze, bl
 accents = "deep oxblood red enamel panels, glowing amber light strips"
 negative = "blue glow, white plastic, all black, monochrome, unpainted"
 # Sampled from the Dominion style board and reference art.
-metals = ["#8c6239", "#b08d57", "#806752", "#7c5d44", "#2b2b2e", "#4a4a52", "#595958", "#c0c0c8"]  # bronze x4, blackened steel, dark chrome x2, ceremonial silver
-nonmetals = ["#3e201a", "#4c281d", "#36110f", "#6b1c1c", "#1e1c1c"]  # oxblood enamel x4, imperial leather
+metals = ["#8c6239", "#b08d57", "#806752", "#7c5d44", "#2b2b2e", "#1a1a1c", "#4a4a52", "#595958", "#c0c0c8"]  # bronze x4, blackened steel x2, dark chrome x2, ceremonial silver
+# Dark metal is the Dominion base (art notes), so near-black reads as steel, not leather.
+nonmetals = ["#3e201a", "#4c281d", "#36110f", "#6b1c1c"]  # oxblood enamel x4
 emissive = ["#ffaa33", "#ffe08a"]  # warm amber, white-hot amber core
 roughness_bias = -0.05
 # Style references: drop images into references/dominion/ (all Dominion assets)

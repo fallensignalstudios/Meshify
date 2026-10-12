@@ -195,7 +195,9 @@ def generate(req: GenerationRequest, progress: ProgressFn | None = None,
     if req.realism and base_color is not None:
         progress("Building PBR materials (delight, normal, roughness, AO)", 0.75)
         maps = materials.build_pbr_maps(base_color, req.delight_strength,
-                                        style.material if style else None)
+                                        style.material if style else None,
+                                        reference=isolated)
+        result.stats["materials"] = maps.stats
         materials.apply_pbr_maps(mesh, maps)
         for label, img, suffix in [
             ("albedo", maps.albedo, "BaseColor"),

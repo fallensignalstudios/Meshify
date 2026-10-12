@@ -349,7 +349,7 @@ async function refresh() {
              onclick="event.stopPropagation()" title="seed ${c.seed}">${c.chosen ? "★ " : ""}#${i + 1}${
              c.score !== null ? " " + Math.round(c.score * 100) + "%" : ""}${c.cropped ? " cropped" : ""}</a>`).join("")}</div>`
       : "";
-    const stats = j.stats ? ` · ${j.stats.faces.toLocaleString()} faces · ${j.stats.size_m.x} × ${j.stats.size_m.y} × ${j.stats.size_m.z} m · ${j.stats.seconds}s` : "";
+    const stats = j.stats ? ` · ${j.stats.faces.toLocaleString()} faces · ${j.stats.size_m.x} × ${j.stats.size_m.y} × ${j.stats.size_m.z} m · ${j.stats.seconds}s${j.stats.materials ? ` · metal ${Math.round(j.stats.materials.metallic_coverage * 100)}% · glow ${j.stats.materials.emissive_coverage > 0 ? "✓" : "–"}` : ""}` : "";
     return `<div class="job ${j.status}" data-id="${j.id}">
       <div class="name">${esc(j.request.asset_name)} — ${esc(j.request.prompt || "image")}${
         [j.request.faction, j.request.category, j.request.condition].filter(Boolean).length

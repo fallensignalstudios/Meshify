@@ -65,6 +65,21 @@ uses the brightest channel, so vivid violet counts as bright). Non-metal
 swatches also veto glow, which stops edge highlights on pale armour being
 read as light.
 
+### Baked textures stay true to the reference
+
+Image-to-3D models bake a texture atlas: UV islands with empty space between
+them, usually darker and duller than the reference image. Meshify:
+
+- masks out the empty atlas space before delighting, blurring and measuring,
+  so it can't darken the islands;
+- colour-matches the texture to the reference cut-out (Lab mean and spread);
+- learns the reference's *actual* metal, non-metal and glow colours (after
+  classifying it with the faction swatches) and finds those in the texture,
+  so a darker bake of bronze still reads as bronze.
+
+`meshify.json` (and the job list) report `metallic_coverage` and
+`emissive_coverage`, so you can spot a texture that lost its materials.
+
 These are colour heuristics, so they work best when the generated texture
 actually uses the faction palette. A faction prompt helps a lot with that.
 
