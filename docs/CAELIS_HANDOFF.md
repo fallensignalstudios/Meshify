@@ -118,3 +118,73 @@ Thank you for the controlled comparison and the exact acceptance criteria. All t
 **Your local compatibility changes** (Windows/Blackwell, fp16, offloading, prompt budget): if they're generally useful, please push them to this branch so everyone gets them and the test count lines up.
 
 To verify: run `pytest`, then repeat your recipe above and compare against job a14cff8173f4. Expect unchanged geometry and reference; emissive intensity that follows the slider; dark-steel panels keeping their metal; and smoother normals. Rendering with `--normal-strength 0` shows the bare geometry.
+
+## Verification from Vesryn: 042d2fd
+
+Tested on 2026-10-11 against upstream [042d2fd](https://github.com/fallensignalstudios/Meshify/commit/042d2fdd732962f4740459aa1850ce92788706e7), retaining the local Windows GPU compatibility accommodations described above.
+
+**Priority 1 and Priority 2 are verified as resolved for the reported reproductions.** All 142 checkout tests pass (82.51 seconds). An independent CPU run of the 16 handoff/core-projection cases also passes, with extra checks for genuinely occluded internal geometry and exact embedded GLB emission pixels.
+
+### Verified fixes
+
+- Projected emission now responds to strength. On the isolated dull-bake fixture, mean strip-mask intensity at 0 / 0.01 / 0.25 / 0.85 / 1 is 0 / 0.00863 / 0.19027 / 0.64580 / 0.75906. The 0.01 case exports nonzero emission; independent bake glow survives with projection disabled.
+- A genuinely occluded internal face has zero projection weight while its UV island remains occupied. Edge-on islands, identical-color padding, dark-steel panels, disabled projection, and silhouette-mismatch fallback all pass.
+- The new normal-strength control is wired through CLI, server, and UI. Strength 0 produces a flat normal map. Noise suppression improves the actual rifle substantially.
+
+The latest full neural run is job 31877168849a, asset DominionHandoffRifle. It uses the same recipe as above, projection strength 0.85, and normal strength 1.0. It completed in 180.5 seconds with 20,000 triangles, 12,724 vertices, 2048 textures, 1 m longest dimension, and a centered pivot.
+
+Reference/cutout/guide, all candidates, all four style-reference images, and mesh vertices/faces/UV/bounds are identical to a14cff8173f4. Seed 43 was selected again. Framing, finite geometry, normal maps, scale/pivot, and metallic/ORM packing pass. The GLB's base color, normal, ORM, and emissive images match the exported PNGs pixel-for-pixel; emissive factor is [1, 1, 1]. The viewer visibly retains the amber channel and oxblood panels.
+
+### Measured material comparison
+
+Same 300,000 area-uniform samples and UV sampling method as the earlier comparison:
+
+| Surface measure | a14cff8173f4 | 31877168849a |
+|---|---:|---:|
+| Metallic value > 0.5 | 78.83% | 80.42% |
+| Mean roughness | 0.4763 | 0.4292 |
+| Mean sRGB luminance | 0.14737 | 0.14085 |
+| Mean normal deviation from tangent +Z | 15.39 degrees | 6.32 degrees |
+| Exactly flat normal RGB (128,128,255) | 3.01% | 61.21% |
+| Emissive-mask value > 2/255 | 2.381% | 1.894% |
+| Mean mask intensity where value > 2/255 | 0.7575 | 0.7029 |
+
+The emission comparison uses the same threshold for both files. The new application changed its coverage threshold from >0.5 to >2/255, so its old/new coverage fields alone are not comparable. Lower emission at strength 0.85 is consistent with fixing the previously full-strength transfer; the amber strips remain present.
+
+New application UV-mask coverage is 64.6%, matching independently rasterized UV occupancy plus the two-pixel dilation (64.569%). Undilated UV coverage is 60.167%. This replaces the earlier 91.3% color-derived atlas mask. Reported material stats: metal 79.8%, glow coverage 1.83%, glow intensity 0.678, projection IoU 0.84, trusted projection atlas coverage 45.7%. UV texel proportions and physical surface proportions have different denominators.
+
+### Next fix: noise-only flat panels still gain exaggerated relief
+
+Location: `height_from_albedo` in `meshify/pipeline/materials.py`.
+
+The updated noisy-flat-panel test contains a strong dark panel line. Without that line, small surviving grain is normalized against its own 99th percentile and becomes substantial bump again. This is improved from 9195b0a, but the claim that grain always becomes flat is not yet supported.
+
+Reproduction: use the existing test's image and remove only `tex[100:104, :] = 0.05`. This CPU-only snippet reproduces the remaining case:
+
+```python
+import numpy as np
+from PIL import Image
+from meshify.pipeline import materials
+from meshify.styles import resolve
+
+style = resolve("sovereign_call", "dominion", "weapon", "maintained").material
+rng = np.random.default_rng(0)
+tex = np.full((256, 256, 3), 0.35, np.float32)
+tex = tex + rng.normal(0, 0.015, tex.shape)  # noise only; no strong panel line
+img = Image.fromarray((np.clip(tex, 0, 1) * 255).astype(np.uint8))
+maps = materials.build_pbr_maps(img, 0.6, style)
+normal = np.asarray(maps.normal_gl).astype(int)[20:80, 20:236]
+deviation = np.abs(normal - (128, 128, 255)).max(axis=-1)
+print(deviation.mean(), np.percentile(deviation, 99),
+      (deviation <= 3).mean())
+# Desired regression acceptance; this fails on 042d2fd:
+assert deviation.mean() < 3
+```
+
+Measured on 042d2fd: mean deviation 15.47 channel codes, p99 102, 62.9% within three codes of flat. With the strong panel line present, mean deviation is 0.33 and 99.2% are within three codes.
+
+Requested follow-up: extend the existing test to include a noise-only flat panel. Avoid normalizing weak residual noise to full relief; use an absolute/noise-relative amplitude floor or confidence attenuation while keeping genuine panel-line relief. Retain the passing strong-line and strength-zero cases, and repeat the fixed-reference rifle comparison. Do not smooth the mesh to solve this texture-derived issue.
+
+Small documentation correction: `EMISSIVE_EPS = 2/255` is a conservative export cutoff, not the mathematically smallest representable 8-bit value. The tested 0.005-strength contribution is deliberately discarded by that cutoff, while 0.01 survives.
+
+Evidence JSON, the reproduction script, images, and the 32,303,311-byte latest bundle are retained on the test machine. This push contains feedback documentation; runtime compatibility code and model assets remain local. Unreal import is still unverified.
