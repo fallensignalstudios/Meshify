@@ -13,6 +13,8 @@ log = logging.getLogger(__name__)
 
 def remove_floaters(mesh: trimesh.Trimesh, keep_ratio: float = 0.02) -> trimesh.Trimesh:
     """Drop disconnected bits smaller than `keep_ratio` of the largest piece."""
+    if mesh.metadata.get("clean_topology"):
+        return mesh  # built by a modeller (procedural): every piece is intended
     parts = mesh.split(only_watertight=False)
     if len(parts) <= 1:
         return mesh

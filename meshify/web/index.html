@@ -196,9 +196,10 @@ fetch("/api/backends").then(r => r.json()).then(list => {
     o.disabled = !b.available;
     $("backend").append(o);
   }
-  const firstReady = list.find(b => b.available && b.name !== "dummy") || list.find(b => b.available);
+  const neural = b => b.available && b.name !== "dummy" && b.name !== "procedural";
+  const firstReady = list.find(neural) || list.find(b => b.available);
   if (firstReady) $("backend").value = firstReady.name;
-  $("nomodels").hidden = list.some(b => b.available && b.name !== "dummy");
+  $("nomodels").hidden = list.some(neural);
   const sync = () => $("dummywarn").hidden = $("backend").value !== "dummy";
   $("backend").onchange = sync;
   sync();

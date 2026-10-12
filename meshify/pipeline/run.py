@@ -186,8 +186,11 @@ def generate(req: GenerationRequest, progress: ProgressFn | None = None,
     # 2. Image -> 3D
     progress(f"Loading {req.backend} model", 0.25)
     backend = get_backend(req.backend)
+    if hasattr(backend, "style_name"):
+        backend.style_name = req.faction  # procedural: faction picks the shape language
+    source = isolated if getattr(backend, "wants_full_reference", False) else cutout
     progress(f"Generating 3D mesh with {req.backend}", 0.3)
-    mesh = backend.generate(cutout, seed=req.seed, texture_size=texture_size,
+    mesh = backend.generate(source, seed=req.seed, texture_size=texture_size,
                             target_faces=faces or None)
 
     # 3. Realism pass: delight + PBR maps

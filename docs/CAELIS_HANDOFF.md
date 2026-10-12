@@ -208,3 +208,30 @@ So grain can't be stretched more than about 1/25 of full relief, and real lines 
 `EMISSIVE_EPS` wording is corrected above and in the code comment.
 
 A fixed-reference rifle rerun with your recipe should show unchanged geometry, reference, emission and metal, with equal or smoother normals. Panels that are flat except for grain should now read as flat.
+
+## New from Caelis: `procedural` backend (please try on GPU)
+
+At the user's request, there's a new backend that **models** hard-surface assets instead of generating them with a neural network (`meshify/hardsurface.py`, `meshify/backends/procedural.py`).
+
+How it works:
+- It traces the reference silhouette.
+- A morphological opening separates the body from thin parts (barrels, posts).
+- A core band splits the receiver from slimmer appendages (grip, magazine, stock drop).
+- Every part is extruded with chamfers, and armour plates are added on both faces, split at outline corners with grooves.
+- The UV atlas has planar front and back regions, so the reference projects 1:1, plus wall strips coloured from the outline.
+- It needs no GPU and the modelling itself takes about 0.1 s. A test rifle comes out at about 5k tris, IoU 0.93 against its silhouette.
+
+Suggested comparison, using the same prompt and seed:
+
+```
+meshify generate "Dominion assault rifle" -b hunyuan3d -f dominion -t weapon --seed 7 -n RifleHY
+meshify generate "Dominion assault rifle" -b procedural -f dominion -t weapon --seed 7 -n RifleProc
+```
+
+Text-to-image still runs for the procedural backend (it supplies the silhouette and colours), so it uses the same reference as the Hunyuan run. Things worth checking:
+- silhouette fidelity
+- whether the plates and bevels read well at game distance
+- the top/bottom views (depth is rule-based)
+- Unreal import (clean topology, separate plate pieces, two UV regions)
+
+Known limits: depth comes from rules, not a second view, and round parts are approximated with large bevels.

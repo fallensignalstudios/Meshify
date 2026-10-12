@@ -39,7 +39,28 @@ as the field moves.
 |---|---|---|---|
 | `trellis` (Microsoft TRELLIS) | MIT | ✅ | Default. Clean geometry. |
 | `hunyuan3d` (Tencent Hunyuan3D 2) | Tencent community license | ⚠️ restricted | Excellent detail. Excludes EU/UK/South Korea, limits large-scale use. |
+| `procedural` | MIT | ✅ | **Models** hard-surface assets instead of generating them: crisp bevels, armour plates, clean UVs, ~5k tris, no GPU. Side-profile props (weapons, ship parts). See below. |
 | `dummy` | MIT | ✅ | CPU test placeholder (no GPU needed). |
+
+### Procedural hard-surface modelling
+
+Neural models dream up a mesh, which is great for organic shapes (creatures,
+characters, Eclipse growths) but soft and lumpy on hard-surface gear. The
+`procedural` backend works like a modeller in Blender instead, with no
+training and no GPU. It traces the reference silhouette (from the text-to-image
+step or your own picture) and splits it into a core body, slimmer appendages
+(grip, magazine, stock drop) and thin parts (barrels, sight posts). Every part
+is extruded with chamfered edges, layered armour plates with panel lines are
+added on both faces, and the result is UV-mapped so the reference projects
+1:1. The faction picks the shape language: angular Dominion plates, softer
+Reformation/Aurelion ones.
+
+```bash
+meshify generate "assault rifle" -b procedural -f dominion -t weapon
+```
+
+The usual PBR, glow and Unreal-export passes run on top. Depth comes from rules
+rather than a second view, so it suits assets you mostly read from the side.
 
 Text prompts use **FLUX.1-schnell** (Apache-2.0) by default, or **RealVisXL**
 (SDXL-based, OpenRAIL++) on 12 GB cards. Any diffusers text-to-image model

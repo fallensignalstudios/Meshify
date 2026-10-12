@@ -8,11 +8,13 @@ from ..gpu import free_cuda
 from .base import BackendInfo, ImageTo3DBackend
 from .dummy import DummyBackend
 from .hunyuan3d import Hunyuan3DBackend
+from .procedural import ProceduralBackend
 from .trellis import TrellisBackend
 
 BACKENDS: dict[str, type[ImageTo3DBackend]] = {
     "trellis": TrellisBackend,
     "hunyuan3d": Hunyuan3DBackend,
+    "procedural": ProceduralBackend,
     "dummy": DummyBackend,
 }
 
