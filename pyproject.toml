@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "meshify"
+version = "0.1.0"
+description = "Free, open-source, realism-first 3D model generation for game dev (Unreal-ready)."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "pillow",
+    "scipy",
+    "trimesh>=4",
+    "fast-simplification",
+    "shapely>=2",
+    "mapbox-earcut",
+    "tomli; python_version < '3.11'",
+    "fastapi",
+    "uvicorn",
+    "python-multipart",
+]
+
+[project.optional-dependencies]
+# Text -> photoreal reference image (FLUX.1-schnell / SDXL via diffusers).
+text = ["torch", "diffusers>=0.30", "transformers", "accelerate", "sentencepiece"]
+# Background removal for user-supplied photos.
+rembg = ["rembg[gpu]"]
+dev = ["pytest", "httpx"]
+
+[project.scripts]
+meshify = "meshify.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["meshify*"]
+
+[tool.setuptools.package-data]
+meshify = ["web/*", "web/vendor/*", "styles/*.toml", "styles/references/**/*", "styles/guides/**/*"]

@@ -1,0 +1,288 @@
+# Sovereign Call: Origins - Meshify style pack
+#
+# Faction, asset type and condition are independent: any combination works
+# (e.g. Dominion + Industrial Prop + Frontier). Edit freely; see docs/STYLES.md.
+#
+# Prompt fragments are kept short on purpose: SDXL-based models (used on 12 GB
+# cards) only read ~75 tokens. Put the most important words first.
+#
+# Colours are sRGB hex. `metals` are swatches that become metallic in the PBR
+# pass when a texture pixel is close to them; `emissive` is the glow colour
+# that gets pulled out into a separate, controllable emissive mask.
+
+[pack]
+name = "Sovereign Call"
+id = "sovereign_call"
+render = "AAA game asset, stylized realism, sci-fi"
+negative = "text, letters, writing, logo, gibberish symbols, cartoon, toy"
+# Default judge checks for every asset type (asset types can add their own).
+good = ["a single complete {subject} on a plain background"]
+bad = ["a cropped close-up of part of an object", "several objects", "text and logos"]
+
+# ---------------------------------------------------------------- factions
+
+[factions.dominion]
+label = "Dominion"
+prompt = "Dominion imperial sci-fi, Roman-Byzantine design, burnished bronze, blackened steel, oxblood red accents, engraved insignia, recessed amber energy channels"
+accents = "deep oxblood red enamel panels, glowing amber light strips"
+negative = "blue glow, white plastic, all black, monochrome, unpainted"
+# Sampled from the Dominion style board and reference art.
+metals = ["#8c6239", "#b08d57", "#806752", "#7c5d44", "#2b2b2e", "#1a1a1c", "#4a4a52", "#595958", "#c0c0c8"]  # bronze x4, blackened steel x2, dark chrome x2, ceremonial silver
+# Dark metal is the Dominion base (art notes), so near-black reads as steel, not leather.
+nonmetals = ["#3e201a", "#4c281d", "#36110f", "#6b1c1c"]  # oxblood enamel x4
+emissive = ["#ffaa33", "#ffe08a"]  # warm amber, white-hot amber core
+roughness_bias = -0.05
+# Style references: drop images into references/dominion/ (all Dominion assets)
+# or references/dominion/<asset type>/ - they're picked up automatically.
+# See references/README.md. A `reference = "path.png"` (or list) here also works.
+
+# Faction x asset-type overrides replace the faction prompt for that asset type.
+# Weapons need their own language: generic faction words lose to "rifle".
+[factions.dominion.overrides.weapon]
+prompt = "blackened steel Dominion imperial service weapon, burnished bronze trim outlining every armor panel, deep oxblood red enamel panels, glowing amber light strips, monolithic angular chassis, engraved crest"
+negative = "neon, cyberpunk, fantasy filigree, gold plated"
+
+[factions.dominion.overrides.hero_weapon]
+prompt = "blackened steel Dominion imperial officer weapon, polished bronze trim outlining every armor panel, deep oxblood red enamel panels, glowing amber energy core and light strips, crest-like sculpted plating, engraved insignia"
+negative = "neon, cyberpunk, fantasy filigree, gold plated"
+
+[factions.reformation]
+label = "Reformation"
+prompt = "Reformation sci-fi, clinical precision engineering, graphite and gunmetal, muted navy, sterile white panels, compact modular, pale cyan sensor lights"
+accents = "sterile white panels, pale cyan light strips"
+negative = "gold, bronze, ornate, engraving, rust"
+metals = ["#3a3d42", "#5a5f66", "#2c3440", "#2e3135", "#494c51", "#2f3d4d"]  # graphite, gunmetal, navy (flat + board-sampled)
+nonmetals = ["#c1c7cf", "#e6eaee"]  # sterile white painted panels
+emissive = ["#9fe6ff", "#4a8ec2"]  # icy cyan, board cyan-blue (no white-hot core: it would match sterile white armour)
+roughness_bias = -0.1
+
+[factions.reformation.overrides.weapon]
+prompt = "Reformation precision weapon, compact modular surgical design, clean machined graphite and gunmetal housings, muted navy panels, integrated sensor optic, pale cyan indicator lights"
+negative = "bronze, ornate, engraving, rust, bulky"
+
+[factions.ancient]
+label = "Ancient Sovereign"
+prompt = "ancient Sovereign technology, elegant sacred geometry, ivory white, pale gold inlays, brushed platinum, sweeping ribs, restrained white-gold energy"
+accents = "pale gold inlays, white-gold energy lines"
+negative = "rust, grime, red, purple, cheap"
+# Sampled from the Remnant / Aurelion style board.
+metals = ["#d4b97a", "#b5a183", "#e5e4e2", "#a8a9ad", "#7d7773", "#6b6864"]  # pale gold x2, platinum x2, ancient silver x2
+nonmetals = ["#f2ead8", "#c2b8ad", "#e1ddda", "#bcbcbd", "#d5d4d3", "#333437", "#1a1a1c"]  # ivory stone x3, pearl ceramic x2, black stone x2
+emissive = ["#fff1c9", "#f0d9a0"]  # white-gold, golden glow
+roughness_bias = -0.1
+
+[factions.ancient.overrides.weapon]
+prompt = "ancient Sovereign weapon, strangely elegant flowing geometry, ivory white body, pale gold inlays, brushed platinum, white-gold energy lines, unlike any modern gun"
+negative = "rust, grime, tactical rails, modern gun parts"
+
+[factions.aurelion]
+label = "Aurelion Enforcer"
+prompt = "Aurelion Enforcer, ancient prison guard technology, ivory-white plating, polished steel, gold ornamentation, solemn and imposing"
+accents = "ivory plating, gold ornamentation"
+negative = "rust, grime, red, purple"
+metals = ["#c9cdd2", "#d4b97a", "#b5a183", "#b8862f", "#7d7773"]  # polished steel, pale gold x2, gold, platinum
+nonmetals = ["#f2ead8", "#c2b8ad", "#e1ddda", "#bcbcbd", "#1a1a1c"]  # ivory plating, pearl ceramic, black
+emissive = ["#fff1c9", "#f0d9a0"]
+roughness_bias = -0.15
+
+[factions.eclipse]
+label = "Eclipse"
+prompt = "Eclipse corruption, black organic growth consuming technology, carbonized flesh, fractured obsidian, writhing tendrils, violet glow from cracks"
+accents = "violet glow through cracks, black organic growth"
+negative = "clean, bright, gold, ivory, cute"
+# Sampled from the Eclipse style board: corruption grows over (charred) metal.
+metals = ["#5c504a", "#2f2625", "#8a8080"]  # charred metal x2, corrupted armour silver
+nonmetals = ["#1c191c", "#171619", "#361520", "#b57f9a", "#8a7876", "#cabcb6", "#524849"]  # black flesh, obsidian, bruised tissue x2, corrupted bone x2, infested ceramic
+emissive = ["#9b4dff", "#8f6fbb", "#dcc2ff"]  # bruised violet, void emission, hot core
+roughness_bias = 0.05
+
+[factions.eclipse.overrides.weapon]
+prompt = "Eclipse-corrupted weapon, original military form consumed from within by black organic growth, carbonized flesh, obsidian fractures, tendrils through the seams, violet glow in cracks"
+negative = "clean, bright, gold, ivory"
+
+# -------------------------------------------------------------- asset types
+# tris/texture follow the brief's "Suggested Starting Mesh Budgets".
+# size_axis: "height" or "longest" (weapons/armour are measured by length).
+# pivot: "bottom_center" (props), "bottom_corner" (modular kits), "center".
+# grid_m: snap the largest footprint dimension to this grid (modular pieces).
+# prompt: "{subject}" is replaced by what you typed. Framing goes FIRST so the
+#   text-to-image model shows the whole object instead of a close-up.
+# aspect: "square", "wide" (1344x768, long things like rifles) or "tall".
+
+[categories.small_prop]
+label = "Small prop"
+prompt = "a complete {subject}, small hand-held prop, whole object visible"
+aspect = "square"
+tris = 3000
+texture = 1024
+size_m = 0.4
+size_axis = "longest"
+pivot = "bottom_center"
+
+[categories.medium_prop]
+label = "Medium prop"
+prompt = "a complete {subject}, whole prop visible"
+aspect = "square"
+tris = 10000
+texture = 2048
+size_m = 1.0
+size_axis = "height"
+pivot = "bottom_center"
+
+[categories.industrial_prop]
+label = "Industrial prop"
+prompt = "a complete {subject}, functional sci-fi machinery, whole machine visible"
+aspect = "square"
+tris = 10000
+texture = 2048
+size_m = 1.8
+size_axis = "height"
+pivot = "bottom_center"
+
+[categories.modular_architecture]
+label = "Modular architecture"
+prompt = "a complete {subject}, modular environment kit piece, straight edges, flat back, front view"
+aspect = "square"
+tris = 15000
+texture = 2048
+size_m = 4.0
+size_axis = "height"
+pivot = "bottom_corner"
+grid_m = 1.0
+
+[categories.architecture_hero]
+label = "Architecture hero piece"
+prompt = "a complete {subject}, monumental architectural centerpiece, whole structure visible"
+aspect = "tall"
+tris = 50000
+texture = 4096
+size_m = 8.0
+size_axis = "height"
+pivot = "bottom_center"
+
+[categories.weapon]
+label = "Weapon"
+prompt = "full-length side profile of a complete fictional sci-fi {subject}, whole weapon end to end"
+negative = "sniper scope, two scopes, duplicate parts, extra barrels, malformed, AK-47, AR-15, real-world firearm, wood furniture, picatinny rails, banana magazine"
+structure = "compact holographic sight, single barrel, believable proportions"
+# The judge scores candidates against these (see docs/STYLES.md, "Candidates").
+good = ["a single well-proportioned {subject} with a compact sight"]
+bad = ["an assault rifle with a long sniper scope", "a gun with two scopes", "a weapon with duplicated parts", "a malformed disproportionate weapon"]
+aspect = "wide"
+tris = 20000
+texture = 2048
+size_m = 1.0
+size_axis = "longest"
+pivot = "center"
+
+# Variants: when a prompt word matches, these replace the asset type's
+# structure / negative / good / bad (a sniper keeps its scope, a sword has no barrel).
+[categories.weapon.variants.marksman]
+match = ["sniper", "marksman", "dmr", "precision"]
+structure = "one precision scope, long single barrel, believable proportions"
+negative = "two scopes, duplicate parts, extra barrels, malformed, AK-47, AR-15, real-world firearm, wood furniture, picatinny rails"
+good = ["a single well-proportioned {subject} with one scope"]
+bad = ["a gun with two scopes", "a weapon with duplicated parts", "a malformed disproportionate weapon"]
+
+[categories.weapon.variants.sidearm]
+match = ["pistol", "sidearm", "handgun", "revolver"]
+structure = "compact handgun, single barrel, believable proportions"
+negative = "scope, rifle stock, duplicate parts, extra barrels, malformed, real-world firearm, wood grip"
+good = ["a single well-proportioned {subject}"]
+bad = ["a pistol with a scope", "a weapon with duplicated parts", "a malformed disproportionate weapon"]
+
+[categories.weapon.variants.melee]
+match = ["blade", "sword", "greatsword", "greatblade", "dagger", "knife", "axe", "spear", "staff", "saber", "sabre", "glaive"]
+structure = "single blade, sturdy hilt, believable proportions"
+negative = "gun parts, scope, barrel, trigger, duplicate parts, malformed, broken blade"
+good = ["a single well-proportioned {subject}"]
+bad = ["a sword with gun parts", "a weapon with duplicated parts", "a malformed disproportionate weapon"]
+
+[categories.hero_weapon]
+label = "Hero weapon"
+prompt = "full-length side profile of a complete legendary sci-fi {subject}, whole weapon end to end"
+negative = "sniper scope, two scopes, duplicate parts, extra barrels, malformed, AK-47, AR-15, real-world firearm, wood furniture, picatinny rails, banana magazine"
+structure = "compact holographic sight, single barrel, believable proportions"
+# The judge scores candidates against these (see docs/STYLES.md, "Candidates").
+good = ["a single well-proportioned {subject} with a compact sight"]
+bad = ["an assault rifle with a long sniper scope", "a gun with two scopes", "a weapon with duplicated parts", "a malformed disproportionate weapon"]
+aspect = "wide"
+tris = 40000
+texture = 4096
+size_m = 1.2
+size_axis = "longest"
+pivot = "center"
+
+# Variants: when a prompt word matches, these replace the asset type's
+# structure / negative / good / bad (a sniper keeps its scope, a sword has no barrel).
+[categories.hero_weapon.variants.marksman]
+match = ["sniper", "marksman", "dmr", "precision"]
+structure = "one precision scope, long single barrel, believable proportions"
+negative = "two scopes, duplicate parts, extra barrels, malformed, AK-47, AR-15, real-world firearm, wood furniture, picatinny rails"
+good = ["a single well-proportioned {subject} with one scope"]
+bad = ["a gun with two scopes", "a weapon with duplicated parts", "a malformed disproportionate weapon"]
+
+[categories.hero_weapon.variants.sidearm]
+match = ["pistol", "sidearm", "handgun", "revolver"]
+structure = "compact handgun, single barrel, believable proportions"
+negative = "scope, rifle stock, duplicate parts, extra barrels, malformed, real-world firearm, wood grip"
+good = ["a single well-proportioned {subject}"]
+bad = ["a pistol with a scope", "a weapon with duplicated parts", "a malformed disproportionate weapon"]
+
+[categories.hero_weapon.variants.melee]
+match = ["blade", "sword", "greatsword", "greatblade", "dagger", "knife", "axe", "spear", "staff", "saber", "sabre", "glaive"]
+structure = "single blade, sturdy hilt, believable proportions"
+negative = "gun parts, scope, barrel, trigger, duplicate parts, malformed, broken blade"
+good = ["a single well-proportioned {subject}"]
+bad = ["a sword with gun parts", "a weapon with duplicated parts", "a malformed disproportionate weapon"]
+
+[categories.armor]
+label = "Armor piece"
+prompt = "a single complete {subject}, separate armor piece, no body inside, whole piece visible"
+negative = "duplicate parts, malformed, multiple pieces"
+structure = "symmetrical, believable proportions"
+good = ["a single symmetrical {subject}"]
+bad = ["several armor pieces", "a malformed asymmetrical armor piece"]
+aspect = "square"
+tris = 15000
+texture = 2048
+size_m = 0.45
+size_axis = "longest"
+pivot = "center"
+
+[categories.ship_component]
+label = "Ship component"
+prompt = "a complete {subject}, modular spaceship component, whole part visible"
+aspect = "wide"
+tris = 15000
+texture = 2048
+size_m = 3.0
+size_axis = "longest"
+pivot = "bottom_center"
+
+# --------------------------------------------------------------- conditions
+# roughness_offset / ao_strength / wear tune the PBR pass.
+
+[conditions.pristine]
+label = "Pristine / ceremonial (officer)"
+prompt = "immaculate, polished surfaces"
+roughness_offset = -0.15
+ao_strength = 0.6
+
+[conditions.maintained]
+label = "Maintained / standard issue"
+prompt = "well maintained, light use marks"
+roughness_offset = 0.0
+ao_strength = 1.0
+
+[conditions.frontier]
+label = "Frontier / campaign-worn"
+prompt = "campaign-worn, well maintained, scuffed edges, light dust"
+roughness_offset = 0.12
+ao_strength = 1.3
+
+[conditions.derelict]
+label = "Derelict / damaged"
+prompt = "derelict, battle damaged, exposed wiring, repair welds, grime"
+roughness_offset = 0.22
+ao_strength = 1.6
